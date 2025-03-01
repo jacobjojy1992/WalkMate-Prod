@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+     "server": "nodemon --exec ts-node src/server/index.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.4.1",
@@ -35,3 +36,4 @@
     "typescript": "^5"
   }
 }
+
