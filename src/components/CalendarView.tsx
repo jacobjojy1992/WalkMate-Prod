@@ -2,11 +2,16 @@
 'use client';
 
 import { useState } from 'react';
-import Calendar from 'react-calendar';
+import dynamic from 'next/dynamic';
 import { useWalkContext } from '@/contexts/WalkContext';
 import { format, isAfter } from 'date-fns';
 import 'react-calendar/dist/Calendar.css';
 
+// Import Calendar dynamically with SSR disabled
+const Calendar = dynamic(
+  () => import('react-calendar'),
+  { ssr: false }
+);
 interface CalendarProps {
   onDateSelect: (date: Date) => void;
 }
@@ -121,8 +126,10 @@ export default function CalendarView({ onDateSelect }: CalendarProps) {
         }
         /* Disabled (future) dates */
         .react-calendar__tile:disabled {
-          color: #6b7280; /* gray-500 */
+          color: #4b5563; /* gray-600, darker than the current gray-500 */
+          background-color: #1f2937; /* Match the calendar background */
           cursor: not-allowed;
+          opacity: 0.5; /* Add some transparency */
         }
       `}</style>
       

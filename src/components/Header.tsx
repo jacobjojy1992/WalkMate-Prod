@@ -10,25 +10,32 @@ export default function Header() {
   const [isWalking, setIsWalking] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0); // in seconds
-  const [startTime, setStartTime] = useState<Date | null>(null);
-  const [pausedTime, setPausedTime] = useState(0); // accumulated paused time in milliseconds
   
-  // Use a ref to store the interval ID to clear it later
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const pauseTimeRef = useRef<number | null>(null);
+  // Use refs to store time information to prevent issues with closure captures
+  const startTimeRef = useRef<number | null>(null);
+  const pausedTimeRef = useRef<number>(0);
+  const lastPauseRef = useRef<number | null>(null);
   
-  // Format today's date as "Wednesday, February 26, 2025"
+  // Timer reference
+  const timerRef = useRef<number | null>(null);
+  
+  // Format today's date as "Saturday, March 1, 2025"
   const formattedDate = format(new Date(), 'EEEE, MMMM d, yyyy');
   
   // Update timer when walking
   useEffect(() => {
     if (isWalking && !isPaused) {
-      timerRef.current = setInterval(() => {
-        if (startTime) {
-          const now = new Date();
-          // Calculate elapsed time excluding paused time
-          const elapsed = Math.floor((now.getTime() - startTime.getTime() - pausedTime) / 1000);
-          setElapsedTime(elapsed);
+      // Clear any existing interval first
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+      
+      timerRef.current = window.setInterval(() => {
+        if (startTimeRef.current) {
+          const now = Date.now();
+          // Calculate elapsed time in seconds, accounting for paused time
+          const elapsed = Math.floor((now - startTimeRef.current - pausedTimeRef.current) / 1000);
+          setElapsedTime(Math.max(0, elapsed)); // Ensure it's never negative
         }
       }, 1000);
     } else if (timerRef.current) {
@@ -41,7 +48,7 @@ export default function Header() {
         clearInterval(timerRef.current);
       }
     };
-  }, [isWalking, isPaused, startTime, pausedTime]);
+  }, [isWalking, isPaused]);
   
   // Format seconds to HH:MM:SS
   const formatTime = (seconds: number): string => {
@@ -58,26 +65,27 @@ export default function Header() {
   
   // Handle start walking
   const handleStartWalking = () => {
-    setStartTime(new Date());
-    setIsWalking(true);
-    setIsPaused(false);
+    // Reset everything to initial state
+    startTimeRef.current = Date.now();
+    pausedTimeRef.current = 0;
+    lastPauseRef.current = null;
     setElapsedTime(0);
-    setPausedTime(0);
+    setIsPaused(false);
+    setIsWalking(true);
   };
   
   // Handle pause/resume walking
   const handlePauseResumeWalking = () => {
     if (isPaused) {
-      // Resume walking
-      if (pauseTimeRef.current) {
-        // Add the paused duration to the total paused time
-        const now = new Date().getTime();
-        setPausedTime(prev => prev + (now - pauseTimeRef.current!));
-        pauseTimeRef.current = null;
+      // Resuming from pause
+      if (lastPauseRef.current) {
+        // Add the duration of this pause to total paused time
+        pausedTimeRef.current += Date.now() - lastPauseRef.current;
+        lastPauseRef.current = null;
       }
     } else {
-      // Pause walking
-      pauseTimeRef.current = new Date().getTime();
+      // Pausing
+      lastPauseRef.current = Date.now();
     }
     
     setIsPaused(!isPaused);
@@ -85,16 +93,22 @@ export default function Header() {
   
   // Handle stop walking
   const handleStopWalking = () => {
-    if (!isWalking || !startTime) return;
+    if (!isWalking || !startTimeRef.current) return;
     
-    // Calculate duration in minutes (rounded)
-    const durationMinutes = Math.round(elapsedTime / 60);
+    // Stop the timer
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    
+    // Calculate final duration in minutes (rounded)
+    const durationMinutes = Math.max(1, Math.round(elapsedTime / 60));
     
     // Use the conversion formula: 100 steps = 1 minute = 75m
     const steps = durationMinutes * 100;
     const distance = durationMinutes * 75;
     
-    // Add the activity
+    // Add the activity to the log
     addActivity({
       date: format(new Date(), 'yyyy-MM-dd'),
       steps,
@@ -106,19 +120,10 @@ export default function Header() {
     // Reset states
     setIsWalking(false);
     setIsPaused(false);
-    setStartTime(null);
     setElapsedTime(0);
-    setPausedTime(0);
-    
-    // Clean up timer
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-    
-    if (pauseTimeRef.current) {
-      pauseTimeRef.current = null;
-    }
+    startTimeRef.current = null;
+    pausedTimeRef.current = 0;
+    lastPauseRef.current = null;
   };
   
   return (

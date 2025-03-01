@@ -9,8 +9,21 @@ export default function RecentActivity() {
   
   // Sort activities by timestamp (most recent first) and take the latest 5
   const recentActivities = [...activities]
-    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-    .slice(0, 5);
+    .sort((a, b) => {
+      // First sort by date (newer dates first)
+      const dateA = new Date(a.date).getTime();
+      const dateB = new Date(b.date).getTime();
+      
+      if (dateA !== dateB) {
+        return dateB - dateA; // Descending date order
+      }
+      
+      // If same date, sort by timestamp (newer timestamps first)
+      const timeA = new Date(a.timestamp).getTime();
+      const timeB = new Date(b.timestamp).getTime();
+      return timeB - timeA;
+    })
+    .slice(0, 10);
   
   return (
     <div>
@@ -33,9 +46,9 @@ export default function RecentActivity() {
                 <tr key={activity.id || index}>
                   <td className="py-3 px-4">{format(parseISO(activity.date), 'MMM d, yyyy')}</td>
                   <td className="py-3 px-4">{format(parseISO(activity.timestamp), 'h:mm a')}</td>
-                  <td className="py-3 px-4">{activity.steps.toLocaleString()}</td>
-                  <td className="py-3 px-4">{activity.distance.toLocaleString()}</td>
-                  <td className="py-3 px-4">{activity.duration}</td>
+                  <td className="py-3 px-4">{Math.round(activity.steps).toLocaleString()}</td>
+                  <td className="py-3 px-4">{Math.round(activity.distance).toLocaleString()}</td>
+                  <td className="py-3 px-4">{Math.round(activity.duration)}</td>
                 </tr>
               ))
             ) : (

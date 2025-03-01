@@ -30,8 +30,8 @@ export default function ActivityLogForm() {
   };
   
   const calculateFromDistance = (meters: number) => {
-    const steps = meters * (100 / 75); // meters to steps (using the ratio)
-    const duration = meters / 75; // meters to minutes
+    const steps = Math.round(meters * (100 / 75)); // Round to whole number
+    const duration = Math.round(meters / 75); // Round to whole minutes
     return { steps, distance: meters, duration };
   };
   
