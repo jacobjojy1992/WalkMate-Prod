@@ -97,6 +97,19 @@ export default function CalendarView({ onDateSelect }: CalendarProps) {
         .react-calendar__navigation button:enabled:focus {
           background-color: #374151; /* gray-700 */
         }
+        /* Disabled navigation buttons */
+        .react-calendar__navigation button:disabled {
+          color: #4b5563; /* gray-600, darker than the current gray-500 */
+          background-color: #1f2937; /* Match the calendar background */
+          opacity: 0.5; /* Add some transparency */
+        }
+
+        /* Hovering over disabled navigation buttons shouldn't change their appearance */
+        .react-calendar__navigation button:disabled:hover,
+        .react-calendar__navigation button:disabled:focus {
+          background-color: #1f2937; /* Keep the same background on hover */
+        }  
+          
         .react-calendar__month-view__weekdays {
           color: #9ca3af; /* gray-400 */
           font-weight: 500;
