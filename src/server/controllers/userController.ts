@@ -1,6 +1,7 @@
 // src/server/controllers/userController.ts
 import { Request, Response } from 'express';
 import dbService from '../services/dbService';
+import { formatError } from '../utils/errorHandler';
 
 /**
  * Controller for user-related operations
@@ -9,7 +10,7 @@ const userController = {
   /**
    * Get all users
    */
-  getAllUsers: async (req: Request, res: Response) => {
+  getAllUsers: async (req: Request, res: Response): Promise<void> => {
     try {
       const users = await dbService.withTransaction(async (prisma) => {
         return prisma.user.findMany();
@@ -20,10 +21,11 @@ const userController = {
         data: users
       });
     } catch (error) {
-      console.error('Error fetching users:', error);
+      const errorMessage = formatError(error);
+      console.error('Error fetching users:', errorMessage);
       res.status(500).json({
         success: false,
-        error: 'Failed to fetch users'
+        error: `Failed to fetch users: ${errorMessage}`
       });
     }
   },
@@ -31,15 +33,16 @@ const userController = {
   /**
    * Get user by ID
    */
-  getUserById: async (req: Request, res: Response) => {
+  getUserById: async (req: Request, res: Response): Promise<void> => {
     try {
       const user = await dbService.getUserById(req.params.id);
       
       if (!user) {
-        return res.status(404).json({
+        res.status(404).json({
           success: false,
           error: 'User not found'
         });
+        return;
       }
       
       res.json({
@@ -47,10 +50,11 @@ const userController = {
         data: user
       });
     } catch (error) {
-      console.error('Error fetching user:', error);
+      const errorMessage = formatError(error);
+      console.error('Error fetching user:', errorMessage);
       res.status(500).json({
         success: false,
-        error: 'Failed to fetch user'
+        error: `Failed to fetch user: ${errorMessage}`
       });
     }
   },
@@ -58,7 +62,7 @@ const userController = {
   /**
    * Create a new user
    */
-  createUser: async (req: Request, res: Response) => {
+  createUser: async (req: Request, res: Response): Promise<void> => {
     try {
       const { name, goalType, goalValue } = req.body;
       
@@ -74,10 +78,11 @@ const userController = {
         data: user
       });
     } catch (error) {
-      console.error('Error creating user:', error);
+      const errorMessage = formatError(error);
+      console.error('Error creating user:', errorMessage);
       res.status(500).json({
         success: false,
-        error: 'Failed to create user'
+        error: `Failed to create user: ${errorMessage}`
       });
     }
   },
@@ -85,7 +90,7 @@ const userController = {
   /**
    * Update a user
    */
-  updateUser: async (req: Request, res: Response) => {
+  updateUser: async (req: Request, res: Response): Promise<void> => {
     try {
       const { id } = req.params;
       const { name, goalType, goalValue } = req.body;
@@ -94,10 +99,11 @@ const userController = {
       const existingUser = await dbService.getUserById(id);
       
       if (!existingUser) {
-        return res.status(404).json({
+        res.status(404).json({
           success: false,
           error: 'User not found'
         });
+        return;
       }
       
       // Update user
@@ -112,10 +118,11 @@ const userController = {
         data: updatedUser
       });
     } catch (error) {
-      console.error('Error updating user:', error);
+      const errorMessage = formatError(error);
+      console.error('Error updating user:', errorMessage);
       res.status(500).json({
         success: false,
-        error: 'Failed to update user'
+        error: `Failed to update user: ${errorMessage}`
       });
     }
   },
@@ -123,7 +130,7 @@ const userController = {
   /**
    * Get a user's current streak
    */
-  getUserStreak: async (req: Request, res: Response) => {
+  getUserStreak: async (req: Request, res: Response): Promise<void> => {
     try {
       const { id } = req.params;
       
@@ -131,10 +138,11 @@ const userController = {
       const user = await dbService.getUserById(id);
       
       if (!user) {
-        return res.status(404).json({
+        res.status(404).json({
           success: false,
           error: 'User not found'
         });
+        return;
       }
       
       // Get user's streak
@@ -145,10 +153,11 @@ const userController = {
         data: { streak }
       });
     } catch (error) {
-      console.error('Error getting user streak:', error);
+      const errorMessage = formatError(error);
+      console.error('Error getting user streak:', errorMessage);
       res.status(500).json({
         success: false,
-        error: 'Failed to get user streak'
+        error: `Failed to get user streak: ${errorMessage}`
       });
     }
   },
@@ -156,7 +165,7 @@ const userController = {
   /**
    * Get a user's weekly report
    */
-  getWeeklyReport: async (req: Request, res: Response) => {
+  getWeeklyReport: async (req: Request, res: Response): Promise<void> => {
     try {
       const { id } = req.params;
       const { date } = req.query;
@@ -165,10 +174,11 @@ const userController = {
       const user = await dbService.getUserById(id);
       
       if (!user) {
-        return res.status(404).json({
+        res.status(404).json({
           success: false,
           error: 'User not found'
         });
+        return;
       }
       
       // Parse date if provided
@@ -180,13 +190,13 @@ const userController = {
             weekStartDate = parsedDate;
           }
         } catch (error) {
-          // Properly handle the error by type-checking
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          const errorMessage = formatError(error);
           console.error('Error parsing date:', errorMessage);
-          return res.status(400).json({
+          res.status(400).json({
             success: false,
             error: `Invalid date format: ${errorMessage}`
           });
+          return;
         }
       }
       
@@ -198,8 +208,7 @@ const userController = {
         data: report
       });
     } catch (error) {
-      // Properly handle the general error
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = formatError(error);
       console.error('Error getting weekly report:', errorMessage);
       res.status(500).json({
         success: false,

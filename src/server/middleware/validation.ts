@@ -11,13 +11,17 @@ interface ValidationRules {
 }
 
 /**
- * Middleware to validate request data against a set of rules
+ * Middleware factory to validate request data against a set of rules
  * @param rules Validation rules to apply
  * @param source Where to find the data (body, params, or query)
  * @returns Express middleware function
  */
-export const validateRequest = (rules: ValidationRules, source: 'body' | 'params' | 'query' = 'body') => {
-  return (req: Request, res: Response, next: NextFunction) => {
+export const validateRequest = (
+  rules: ValidationRules,
+  source: 'body' | 'params' | 'query' = 'body'
+) => {
+  // Return the middleware function
+  return (req: Request, res: Response, next: NextFunction): void => {
     // Get the data to validate (from body, params, or query)
     const data = source === 'body' ? req.body : source === 'params' ? req.params : req.query;
     const errors: string[] = [];
@@ -65,10 +69,11 @@ export const validateRequest = (rules: ValidationRules, source: 'body' | 'params
     
     // If there are validation errors, return them
     if (errors.length > 0) {
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         errors
       });
+      return;
     }
     
     // If validation passes, proceed to the next middleware
