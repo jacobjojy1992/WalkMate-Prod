@@ -16,6 +16,11 @@ export const prisma = new PrismaClient();
 app.use(cors()); // Allows cross-origin requests (from frontend to backend)
 app.use(express.json()); // Parses incoming JSON requests
 
+// Root route - This will handle requests to the root path
+app.get('/', (req, res) => {
+  res.send('WalkMate API Server is running! Try accessing /api/health');
+});
+
 // Routes
 app.use('/api/users', userRoutes);
 app.use('/api/walks', walkRoutes);
