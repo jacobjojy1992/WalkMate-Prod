@@ -9,33 +9,66 @@ interface OnboardingModalProps {
 }
 
 export default function OnboardingModal({ onClose }: OnboardingModalProps) {
-  const { setUserProfile } = useWalkContext();
+  const { setUserProfile, isLoading, error } = useWalkContext();
   const [name, setName] = useState('');
   const [goalType, setGoalType] = useState<'steps' | 'distance'>('steps');
   const [goalValue, setGoalValue] = useState(10000); // Default: 10,000 steps
+  const [formError, setFormError] = useState<string | null>(null);
+  const [formSubmitting, setFormSubmitting] = useState(false);
   
   // Handle form submission
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Create user profile
-    setUserProfile({
-      name,
-      dailyGoal: {
-        type: goalType,
-        value: goalValue
-      }
-    });
+    // Basic validation
+    if (!name.trim()) {
+      setFormError('Please enter your name');
+      return;
+    }
     
-    // Close the modal
-    onClose();
+    if (goalValue <= 0) {
+      setFormError('Please enter a valid goal value');
+      return;
+    }
+    
+    setFormError(null);
+    setFormSubmitting(true);
+    
+    try {
+      // Create user profile
+      await setUserProfile({
+        name: name.trim(),
+        dailyGoal: {
+          type: goalType,
+          value: goalValue
+        }
+      });
+      
+      // Close the modal
+      onClose();
+    } catch (err) {
+      console.error('Failed to save profile:', err);
+      setFormError('Failed to save your profile. Please try again.');
+    } finally {
+      setFormSubmitting(false);
+    }
   };
+  
+  // Determine if form is in loading state
+  const isFormLoading = formSubmitting || isLoading;
   
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-gray-800 p-6 rounded-lg max-w-md w-full">
         <h2 className="text-xl font-bold mb-4">Welcome to WalkMate!</h2>
         <p className="mb-4">Please tell us a bit about yourself to get started.</p>
+        
+        {/* Error messages */}
+        {(error || formError) && (
+          <div className="mb-4 p-3 bg-red-900/50 border border-red-800 rounded text-red-200 text-sm">
+            {formError || error}
+          </div>
+        )}
         
         <form onSubmit={handleSubmit}>
           <div className="mb-4">
@@ -45,6 +78,7 @@ export default function OnboardingModal({ onClose }: OnboardingModalProps) {
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="w-full p-2 bg-gray-700 rounded text-white"
+              disabled={isFormLoading}
               required
             />
           </div>
@@ -55,6 +89,7 @@ export default function OnboardingModal({ onClose }: OnboardingModalProps) {
               value={goalType}
               onChange={(e) => setGoalType(e.target.value as 'steps' | 'distance')}
               className="w-full p-2 bg-gray-700 rounded text-white"
+              disabled={isFormLoading}
             >
               <option value="steps">Steps</option>
               <option value="distance">Distance (meters)</option>
@@ -73,15 +108,30 @@ export default function OnboardingModal({ onClose }: OnboardingModalProps) {
               }}
               className="w-full p-2 bg-gray-700 rounded text-white"
               min="1"
+              disabled={isFormLoading}
               required
             />
           </div>
           
           <button
             type="submit"
-            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded"
+            className={`w-full ${isFormLoading 
+              ? 'bg-indigo-800 cursor-not-allowed' 
+              : 'bg-indigo-600 hover:bg-indigo-700'
+            } text-white py-2 rounded flex justify-center items-center`}
+            disabled={isFormLoading}
           >
-            Get Started
+            {isFormLoading ? (
+              <>
+                <span className="mr-2">Saving...</span>
+                <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              </>
+            ) : (
+              'Get Started'
+            )}
           </button>
         </form>
       </div>

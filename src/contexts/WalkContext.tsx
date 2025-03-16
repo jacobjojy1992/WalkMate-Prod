@@ -201,7 +201,7 @@ export function WalkProvider({ children }: { children: ReactNode }) {
     
     try {
       let response;
-      let userId = profile.id;
+      const userId = profile.id;
       
       if (userId) {
         // Update existing user
