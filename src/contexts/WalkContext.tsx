@@ -1,7 +1,7 @@
 // src/contexts/WalkContext.tsx
 'use client';
 
-import { createContext, useState, useContext, ReactNode, useEffect } from 'react';
+import { createContext, useState, useContext, ReactNode, useEffect, useCallback } from 'react';
 import { UserProfile, WalkActivity, ApiUser, ApiWalk, ApiResponse } from '@/types';
 import { userApi, walkApi } from '@/services/api';
 
@@ -67,6 +67,30 @@ export function WalkProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Function to fetch activities for a specific user - wrapped in useCallback
+  const fetchActivitiesForUser = useCallback(async (userId: string) => {
+    try {
+      const response = await walkApi.getAllForUser(userId) as ApiResponse<ApiWalk[]>;
+      
+      if (response.success && response.data) {
+        // Make sure response.data is always an array
+        const walkData = Array.isArray(response.data) ? response.data : [];
+        // Convert API walks to our app's activity format
+        const convertedActivities = walkData.map(apiWalkToWalkActivity);
+        setActivities(convertedActivities);
+      }
+    } catch (err) {
+      console.error('Error fetching activities:', err);
+      setError('Failed to fetch activities');
+      
+      // Fall back to localStorage data
+      const savedActivities = localStorage.getItem('walkActivities');
+      if (savedActivities) {
+        setActivities(JSON.parse(savedActivities));
+      }
+    }
+  }, []);
+
   // Initialize data on component mount
   useEffect(() => {
     const initializeData = async () => {
@@ -81,7 +105,7 @@ export function WalkProvider({ children }: { children: ReactNode }) {
           try {
             const response = await userApi.getById(userId) as ApiResponse<ApiUser>;
             
-            if (response.success) {
+            if (response.success && response.data) {
               // Convert API user to our app's user profile format
               const profile = apiUserToUserProfile(response.data);
               setUserProfileState(profile);
@@ -119,32 +143,10 @@ export function WalkProvider({ children }: { children: ReactNode }) {
     };
     
     initializeData();
-  }, []);
+  }, [fetchActivitiesForUser]);
 
-  // Function to fetch activities for a specific user
-  const fetchActivitiesForUser = async (userId: string) => {
-    try {
-      const response = await walkApi.getAllForUser(userId) as ApiResponse<ApiWalk[]>;
-      
-      if (response.success) {
-        // Convert API walks to our app's activity format
-        const convertedActivities = response.data.map(apiWalkToWalkActivity);
-        setActivities(convertedActivities);
-      }
-    } catch (err) {
-      console.error('Error fetching activities:', err);
-      setError('Failed to fetch activities');
-      
-      // Fall back to localStorage data
-      const savedActivities = localStorage.getItem('walkActivities');
-      if (savedActivities) {
-        setActivities(JSON.parse(savedActivities));
-      }
-    }
-  };
-
-  // Function to add a new activity
-  const addActivity = async (activity: Omit<WalkActivity, 'id' | 'userId'>) => {
+  // Function to add a new activity - wrapped in useCallback
+  const addActivity = useCallback(async (activity: Omit<WalkActivity, 'id' | 'userId'>) => {
     if (!userProfile?.id) {
       setError('Cannot add activity: No user profile found');
       return;
@@ -165,14 +167,13 @@ export function WalkProvider({ children }: { children: ReactNode }) {
       // Send to API
       const response = await walkApi.create(walkData) as ApiResponse<ApiWalk>;
       
-      if (response.success) {
+      if (response.success && response.data) {
         // Convert API response to our format and add to state
         const newActivity = apiWalkToWalkActivity(response.data);
         setActivities(prev => [...prev, newActivity]);
         
         // Also update localStorage as a backup
-        const updatedActivities = [...activities, newActivity];
-        localStorage.setItem('walkActivities', JSON.stringify(updatedActivities));
+        localStorage.setItem('walkActivities', JSON.stringify([...activities, newActivity]));
       } else {
         setError('Failed to add activity');
       }
@@ -185,18 +186,17 @@ export function WalkProvider({ children }: { children: ReactNode }) {
         ...activity,
         id: Date.now().toString(),
         userId: userProfile.id
-      };
+      } as WalkActivity; // Add type assertion here
       
       setActivities(prev => [...prev, newActivity]);
-      const updatedActivities = [...activities, newActivity];
-      localStorage.setItem('walkActivities', JSON.stringify(updatedActivities));
+      localStorage.setItem('walkActivities', JSON.stringify([...activities, newActivity]));
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [activities, userProfile]);
 
-  // Function to create or update user profile
-  const setUserProfile = async (profile: UserProfile) => {
+  // Function to create or update user profile - wrapped in useCallback
+  const setUserProfile = useCallback(async (profile: UserProfile) => {
     setIsLoading(true);
     
     try {
@@ -215,7 +215,7 @@ export function WalkProvider({ children }: { children: ReactNode }) {
         }) as ApiResponse<ApiUser>;
       }
       
-      if (response.success) {
+      if (response.success && response.data) {
         // Convert API user to our format
         const updatedProfile = apiUserToUserProfile(response.data);
         setUserProfileState(updatedProfile);
@@ -247,12 +247,12 @@ export function WalkProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [fetchActivitiesForUser]);
 
-  // Function to fetch all activities
-  const fetchActivities = async () => {
-    if (!userProfile?.id) {
-      // No user profile, can't fetch activities
+  // Function to fetch all activities - wrapped in useCallback
+  const fetchActivities = useCallback(async () => {
+    if (!userProfile?.id || isLoading) {
+      // No user profile or already loading, can't fetch activities
       return;
     }
     
@@ -266,7 +266,7 @@ export function WalkProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [userProfile, isLoading, fetchActivitiesForUser]);
 
   // Provide the context value to children
   return (

@@ -10,6 +10,7 @@ import ActivityLogForm from '@/components/ActivityLogForm';
 import CalendarView from '@/components/CalendarView';
 import RecentActivity from '@/components/RecentActivity';
 
+
 export default function Home() {
   const { userProfile } = useWalkContext();
   const [showOnboarding, setShowOnboarding] = useState(false);

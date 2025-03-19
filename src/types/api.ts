@@ -3,8 +3,8 @@
 // Backend API response types
 export interface ApiResponse<T> {
     success: boolean;
-    data: T;
-    error?: string;
+    data: T | null;
+    error?: string | null;
   }
   
   export interface ApiUser {

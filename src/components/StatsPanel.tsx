@@ -2,7 +2,7 @@
 'use client';
 
 import { useWalkContext } from '@/contexts/WalkContext';
-import { useMemo, useEffect } from 'react';
+import { useMemo, useEffect, useRef } from 'react';
 import { format, isToday } from 'date-fns';
 
 interface StatsPanelProps {
@@ -12,14 +12,19 @@ interface StatsPanelProps {
 export default function StatsPanel({ selectedDate }: StatsPanelProps) {
   const { activities, userProfile, isLoading, error, fetchActivities } = useWalkContext();
   const today = new Date();
+  const initialFetchDone = useRef(false);
   
   // If no date is provided, use today
   const targetDate = selectedDate || today;
   
-  // Fetch activities on component mount and when selected date changes
+  // Fetch activities on component mount - with safety check to prevent loops
   useEffect(() => {
-    fetchActivities();
-  }, [fetchActivities]);
+    if (!initialFetchDone.current && userProfile?.id && !isLoading) {
+      fetchActivities();
+      initialFetchDone.current = true;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userProfile?.id]); // Only re-run if user profile ID changes
   
   // Calculate stats for the selected date
   const stats = useMemo(() => {
@@ -36,10 +41,10 @@ export default function StatsPanel({ selectedDate }: StatsPanelProps) {
     }
     
     try {
-      // Filter activities for the selected date
+      // Filter activities for the selected date - more precise comparison
       const dateString = format(targetDate, 'yyyy-MM-dd');
-      const dayActivities = activities.filter(activity => 
-        activity.date && activity.date.startsWith(dateString)
+      const  dayActivities = activities.filter(activity => 
+      activity.date === dateString
       );
       
       // If no activities for this date, return default stats
@@ -143,7 +148,11 @@ export default function StatsPanel({ selectedDate }: StatsPanelProps) {
           
           {/* Refresh button with loading indicator */}
           <button 
-            onClick={() => fetchActivities()}
+            onClick={() => {
+              // Reset the initial fetch ref so we can fetch again
+              initialFetchDone.current = false;
+              fetchActivities();
+            }}
             disabled={isLoading}
             className={`text-sm text-gray-400 hover:text-white flex items-center ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
           >

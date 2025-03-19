@@ -8,9 +8,9 @@ type LogType = 'steps' | 'duration' | 'distance';
 
 export default function ActivityLogForm() {
   const { addActivity, isLoading, error } = useWalkContext();
-  const [activeTab, setActiveTab] = useState<LogType>('steps');
   
   // Form states
+  const [activeTab, setActiveTab] = useState<LogType>('steps');
   const [steps, setSteps] = useState(0);
   const [distance, setDistance] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -79,11 +79,16 @@ export default function ActivityLogForm() {
     }
     
     try {
-      // Add the activity
+      // Create timestamp for the selected date (at noon)
+      // This ensures the activity is logged for the correct date
+      const [year, month, day] = date.split('-').map(Number);
+      const timestamp = new Date(year, month - 1, day, 12, 0, 0).toISOString();
+      
+      // Add the activity with the correct date
       await addActivity({
         date,
         ...activityData,
-        timestamp: new Date().toISOString()
+        timestamp // Use the timestamp generated from the selected date
       });
       
       // Reset form fields on success
