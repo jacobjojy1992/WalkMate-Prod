@@ -3,7 +3,7 @@ import axios from 'axios';
 import { ApiResponse, ApiUser, ApiWalk } from '@/types';
 
 // Base URL for our API
-const API_URL = 'http://localhost:3001/api';
+const API_URL = 'http://localhost:3001';
 
 // User API endpoints
 export const userApi = {
@@ -121,7 +121,7 @@ export const walkApi = {
    */
   getAllForUser: async (userId: string): Promise<ApiResponse<ApiWalk[]>> => {
     try {
-      const response = await axios.get(`${API_URL}/walks/user/${userId}`);
+      const response = await axios.get(`${API_URL}/users/${userId}/walks`);
       return {
         success: true,
         data: Array.isArray(response.data) ? response.data as ApiWalk[] : [],
