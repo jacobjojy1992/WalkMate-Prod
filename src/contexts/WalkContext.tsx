@@ -2,7 +2,7 @@
 'use client';
 
 import { createContext, useState, useContext, ReactNode, useEffect, useCallback } from 'react';
-import { UserProfile, WalkActivity, ApiUser, ApiWalk, ApiResponse } from '@/types';
+import { UserProfile, WalkActivity, ApiUser, ApiWalk } from '@/types';
 import { userApi, walkApi } from '@/services/api';
 
 // Define context type
@@ -70,14 +70,28 @@ export function WalkProvider({ children }: { children: ReactNode }) {
   // Function to fetch activities for a specific user - wrapped in useCallback
   const fetchActivitiesForUser = useCallback(async (userId: string) => {
     try {
-      const response = await walkApi.getAllForUser(userId) as ApiResponse<ApiWalk[]>;
+      const response = await walkApi.getAllForUser(userId);
       
       if (response.success && response.data) {
-        // Make sure response.data is always an array
-        const walkData = Array.isArray(response.data) ? response.data : [];
         // Convert API walks to our app's activity format
-        const convertedActivities = walkData.map(apiWalkToWalkActivity);
+        const convertedActivities = response.data.map(apiWalkToWalkActivity);
         setActivities(convertedActivities);
+      } else {
+        console.warn('No activities data received from API', response);
+        // If API response indicates failure but doesn't throw, handle it here
+        if (!response.success) {
+          setError(response.error || 'Failed to fetch activities');
+          
+          // Fall back to localStorage data
+          const savedActivities = localStorage.getItem('walkActivities');
+          if (savedActivities) {
+            try {
+              setActivities(JSON.parse(savedActivities));
+            } catch (e) {
+              console.error('Error parsing localStorage activities', e);
+            }
+          }
+        }
       }
     } catch (err) {
       console.error('Error fetching activities:', err);
@@ -86,7 +100,11 @@ export function WalkProvider({ children }: { children: ReactNode }) {
       // Fall back to localStorage data
       const savedActivities = localStorage.getItem('walkActivities');
       if (savedActivities) {
-        setActivities(JSON.parse(savedActivities));
+        try {
+          setActivities(JSON.parse(savedActivities));
+        } catch (e) {
+          console.error('Error parsing localStorage activities', e);
+        }
       }
     }
   }, []);
@@ -95,6 +113,7 @@ export function WalkProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const initializeData = async () => {
       setIsLoading(true);
+      setError(null);
       
       try {
         // Try to get user ID from localStorage
@@ -103,7 +122,7 @@ export function WalkProvider({ children }: { children: ReactNode }) {
         if (userId) {
           // Try to fetch user from API
           try {
-            const response = await userApi.getById(userId) as ApiResponse<ApiUser>;
+            const response = await userApi.getById(userId);
             
             if (response.success && response.data) {
               // Convert API user to our app's user profile format
@@ -113,10 +132,15 @@ export function WalkProvider({ children }: { children: ReactNode }) {
               // Now fetch user's activities
               await fetchActivitiesForUser(userId);
             } else {
+              console.warn('No user data received from API or request unsuccessful', response);
               // If user not found on API but exists in localStorage, use localStorage data
               const savedProfile = localStorage.getItem('userProfile');
               if (savedProfile) {
-                setUserProfileState(JSON.parse(savedProfile));
+                try {
+                  setUserProfileState(JSON.parse(savedProfile));
+                } catch (e) {
+                  console.error('Error parsing localStorage userProfile', e);
+                }
               }
             }
           } catch (err) {
@@ -124,14 +148,22 @@ export function WalkProvider({ children }: { children: ReactNode }) {
             // Fall back to localStorage data
             const savedProfile = localStorage.getItem('userProfile');
             if (savedProfile) {
-              setUserProfileState(JSON.parse(savedProfile));
+              try {
+                setUserProfileState(JSON.parse(savedProfile));
+              } catch (e) {
+                console.error('Error parsing localStorage userProfile', e);
+              }
             }
           }
         } else {
           // No user ID in localStorage, check if we have a profile
           const savedProfile = localStorage.getItem('userProfile');
           if (savedProfile) {
-            setUserProfileState(JSON.parse(savedProfile));
+            try {
+              setUserProfileState(JSON.parse(savedProfile));
+            } catch (e) {
+              console.error('Error parsing localStorage userProfile', e);
+            }
           }
         }
       } catch (err) {
@@ -153,6 +185,7 @@ export function WalkProvider({ children }: { children: ReactNode }) {
     }
     
     setIsLoading(true);
+    setError(null);
     
     try {
       // Prepare activity data for API
@@ -165,7 +198,7 @@ export function WalkProvider({ children }: { children: ReactNode }) {
       };
       
       // Send to API
-      const response = await walkApi.create(walkData) as ApiResponse<ApiWalk>;
+      const response = await walkApi.create(walkData);
       
       if (response.success && response.data) {
         // Convert API response to our format and add to state
@@ -175,7 +208,17 @@ export function WalkProvider({ children }: { children: ReactNode }) {
         // Also update localStorage as a backup
         localStorage.setItem('walkActivities', JSON.stringify([...activities, newActivity]));
       } else {
-        setError('Failed to add activity');
+        setError(response.error || 'Failed to add activity');
+        
+        // Fallback: Add to localStorage anyway
+        const newActivity = {
+          ...activity,
+          id: Date.now().toString(),
+          userId: userProfile.id
+        } as WalkActivity;
+        
+        setActivities(prev => [...prev, newActivity]);
+        localStorage.setItem('walkActivities', JSON.stringify([...activities, newActivity]));
       }
     } catch (err) {
       console.error('Error adding activity:', err);
@@ -186,7 +229,7 @@ export function WalkProvider({ children }: { children: ReactNode }) {
         ...activity,
         id: Date.now().toString(),
         userId: userProfile.id
-      } as WalkActivity; // Add type assertion here
+      } as WalkActivity;
       
       setActivities(prev => [...prev, newActivity]);
       localStorage.setItem('walkActivities', JSON.stringify([...activities, newActivity]));
@@ -198,6 +241,7 @@ export function WalkProvider({ children }: { children: ReactNode }) {
   // Function to create or update user profile - wrapped in useCallback
   const setUserProfile = useCallback(async (profile: UserProfile) => {
     setIsLoading(true);
+    setError(null);
     
     try {
       let response;
@@ -205,14 +249,14 @@ export function WalkProvider({ children }: { children: ReactNode }) {
       
       if (userId) {
         // Update existing user
-        response = await userApi.update(userId, userProfileToApiUser(profile)) as ApiResponse<ApiUser>;
+        response = await userApi.update(userId, userProfileToApiUser(profile));
       } else {
         // Create new user
         response = await userApi.create({
           name: profile.name,
           goalType: profile.dailyGoal.type,
           goalValue: profile.dailyGoal.value
-        }) as ApiResponse<ApiUser>;
+        });
       }
       
       if (response.success && response.data) {
@@ -231,19 +275,38 @@ export function WalkProvider({ children }: { children: ReactNode }) {
           await fetchActivitiesForUser(response.data.id);
         }
       } else {
-        setError('Failed to update profile');
+        setError(response.error || 'Failed to update profile');
+        console.warn('API error or unsuccessful response', response);
         
         // Fallback: Update in localStorage anyway
-        setUserProfileState(profile);
-        localStorage.setItem('userProfile', JSON.stringify(profile));
+        const fallbackProfile = {
+          ...profile,
+          id: profile.id || Date.now().toString()
+        };
+        setUserProfileState(fallbackProfile);
+        localStorage.setItem('userProfile', JSON.stringify(fallbackProfile));
+        
+        // If this is a new user without an ID yet, generate one and save it
+        if (!profile.id) {
+          localStorage.setItem('currentUserId', fallbackProfile.id);
+        }
       }
     } catch (err) {
       console.error('Error updating profile:', err);
       setError('Failed to update profile. Please try again.');
       
       // Fallback: Update in localStorage anyway
-      setUserProfileState(profile);
-      localStorage.setItem('userProfile', JSON.stringify(profile));
+      const fallbackProfile = {
+        ...profile,
+        id: profile.id || Date.now().toString()
+      };
+      setUserProfileState(fallbackProfile);
+      localStorage.setItem('userProfile', JSON.stringify(fallbackProfile));
+      
+      // If this is a new user without an ID yet, generate one and save it
+      if (!profile.id) {
+        localStorage.setItem('currentUserId', fallbackProfile.id);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -251,12 +314,19 @@ export function WalkProvider({ children }: { children: ReactNode }) {
 
   // Function to fetch all activities - wrapped in useCallback
   const fetchActivities = useCallback(async () => {
-    if (!userProfile?.id || isLoading) {
-      // No user profile or already loading, can't fetch activities
+    if (!userProfile?.id) {
+      // No user profile, can't fetch activities
+      setError('Cannot fetch activities: No user profile found');
+      return;
+    }
+    
+    if (isLoading) {
+      // Already loading, prevent duplicate requests
       return;
     }
     
     setIsLoading(true);
+    setError(null);
     
     try {
       await fetchActivitiesForUser(userProfile.id);

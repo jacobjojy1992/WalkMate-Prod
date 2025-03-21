@@ -1,6 +1,7 @@
 // src/server/routes/userRoutes.ts
 import express from 'express';
 import userController from '../controllers/userController';
+import walkController from '../controllers/walkController';
 import { validateRequest } from '../middleware/validation';
 
 const router = express.Router();
@@ -36,5 +37,8 @@ router.get('/:id/streak', userController.getUserStreak);
 
 // Get user weekly report
 router.get('/:id/weekly-report', userController.getWeeklyReport);
+
+// Get all walks for a user - adding this route to match frontend expectations
+router.get('/:userId/walks', walkController.getUserWalks);
 
 export default router;
