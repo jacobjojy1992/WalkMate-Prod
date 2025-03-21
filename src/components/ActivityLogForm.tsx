@@ -154,6 +154,10 @@ export default function ActivityLogForm() {
         </button>
       </div>
       
+      <div className="text-xs text-gray-400 mb-4 pb-2 ">
+      <p>Conversion Estimates: 100 steps ≈ 1 minute ≈ 75 meters</p>
+      </div>
+
       {/* Common form elements for all tabs */}
       <form onSubmit={handleSubmit}>
         <div className="mb-4">
