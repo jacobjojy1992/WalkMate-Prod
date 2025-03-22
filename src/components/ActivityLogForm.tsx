@@ -1,8 +1,9 @@
 // src/components/ActivityLogForm.tsx
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useWalkContext } from '@/contexts/WalkContext';
+import { healthCheck } from '@/services/api';
 
 type LogType = 'steps' | 'duration' | 'distance';
 
@@ -17,6 +18,58 @@ export default function ActivityLogForm() {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]); // Today's date in YYYY-MM-DD format
   const [formSubmitting, setFormSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  
+  // Network and server availability states
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  const [isServerAvailable, setIsServerAvailable] = useState(true);
+  const [lastChecked, setLastChecked] = useState<Date | null>(null);
+  
+  // Function to check if server is available
+  const checkServerAvailability = useCallback(async () => {
+    try {
+      const response = await healthCheck();
+      setIsServerAvailable(response.success);
+      setLastChecked(new Date());
+    } catch (error) {
+      console.error('Server health check failed:', error);
+      setIsServerAvailable(false);
+      setLastChecked(new Date());
+    }
+  }, []);
+  
+  // Effect for tracking general online/offline status and server availability
+  useEffect(() => {
+    const handleOnlineStatusChange = () => {
+      const isOnline = navigator.onLine;
+      setIsOffline(!isOnline);
+      
+      // When we come back online, check server availability
+      if (isOnline) {
+        checkServerAvailability();
+      } else {
+        // If we're offline, we know server is not available
+        setIsServerAvailable(false);
+      }
+    };
+    
+    window.addEventListener('online', handleOnlineStatusChange);
+    window.addEventListener('offline', handleOnlineStatusChange);
+    
+    // Initial check when component mounts
+    checkServerAvailability();
+    
+    // Set up periodic checks every 15 seconds while the component is mounted
+    const intervalId = setInterval(checkServerAvailability, 15000);
+    
+    return () => {
+      window.removeEventListener('online', handleOnlineStatusChange);
+      window.removeEventListener('offline', handleOnlineStatusChange);
+      clearInterval(intervalId);
+    };
+  }, [checkServerAvailability]);
+  
+  // Combine network and server status into one variable for form disabling
+  const isNetworkUnavailable = isOffline || !isServerAvailable;
   
   // Conversion formula functions based on: 100 steps = 1 minute = 75m
   const calculateFromSteps = (stepCount: number) => {
@@ -40,6 +93,14 @@ export default function ActivityLogForm() {
   // Handle form submission based on active tab
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Don't proceed if network is unavailable
+    if (isNetworkUnavailable) {
+      setFormError(isOffline 
+        ? "Cannot log activities while offline" 
+        : "Cannot log activities while server is unavailable");
+      return;
+    }
     
     // Reset any previous form errors
     setFormError(null);
@@ -97,10 +158,33 @@ export default function ActivityLogForm() {
       setDuration(0);
     } catch (err) {
       console.error("Error adding activity:", err);
-      setFormError("Failed to log activity. Please try again.");
+      
+      // Update server availability status if we get an error
+      if (err && typeof err === 'object' && 'message' in err) {
+        const errorMessage = String(err.message || '');
+        
+        // If this looks like a network error, mark server as unavailable
+        if (
+          errorMessage.includes('Network Error') || 
+          errorMessage.includes('Failed to fetch') ||
+          errorMessage.includes('ECONNREFUSED')
+        ) {
+          setIsServerAvailable(false);
+          setFormError("Server is unavailable. Your activity was not saved.");
+        } else {
+          setFormError("Failed to log activity. Please try again.");
+        }
+      } else {
+        setFormError("Failed to log activity. Please try again.");
+      }
     } finally {
       setFormSubmitting(false);
     }
+  };
+  
+  // Function to manually check server status
+  const handleRetryConnection = () => {
+    checkServerAvailability();
   };
   
   // Determine if the form is in a loading state
@@ -117,6 +201,30 @@ export default function ActivityLogForm() {
         </div>
       )}
       
+      {/* Network/Server availability warning */}
+      {isNetworkUnavailable && (
+        <div className="mb-4 p-3 bg-yellow-900/50 border border-yellow-800 rounded text-yellow-200 text-sm">
+          {isOffline 
+            ? "You are currently offline. Activity logging is disabled until your connection is restored." 
+            : (
+              <div className="flex justify-between items-center">
+                <div>
+                  Server is currently unavailable. Activity logging is disabled until the server is back online.
+                  {lastChecked && (
+                    <div className="text-xs mt-1">Last checked: {lastChecked.toLocaleTimeString()}</div>
+                  )}
+                </div>
+                <button 
+                  onClick={handleRetryConnection}
+                  className="ml-2 px-2 py-1 bg-yellow-700 hover:bg-yellow-600 rounded text-xs"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+        </div>
+      )}
+      
       {/* Tabs */}
       <div className="flex border-b border-gray-700 mb-6">
         <button
@@ -126,7 +234,7 @@ export default function ActivityLogForm() {
               : 'text-gray-400 hover:text-white'
           }`}
           onClick={() => setActiveTab('steps')}
-          disabled={isFormLoading}
+          disabled={isFormLoading || isNetworkUnavailable}
         >
           Steps
         </button>
@@ -137,7 +245,7 @@ export default function ActivityLogForm() {
               : 'text-gray-400 hover:text-white'
           }`}
           onClick={() => setActiveTab('duration')}
-          disabled={isFormLoading}
+          disabled={isFormLoading || isNetworkUnavailable}
         >
           Duration
         </button>
@@ -148,16 +256,17 @@ export default function ActivityLogForm() {
               : 'text-gray-400 hover:text-white'
           }`}
           onClick={() => setActiveTab('distance')}
-          disabled={isFormLoading}
+          disabled={isFormLoading || isNetworkUnavailable}
         >
           Distance
         </button>
       </div>
       
-      <div className="text-xs text-gray-400 mb-4 pb-2 ">
-      <p>Conversion Estimates: 100 steps ≈ 1 minute ≈ 75 meters</p>
+      {/* Formula explanation */}
+      <div className="text-xs text-gray-400 mb-4 pb-2 border-b border-gray-700">
+        <p>Conversions used: 100 steps ≈ 1 minute ≈ 75 meters</p>
       </div>
-
+      
       {/* Common form elements for all tabs */}
       <form onSubmit={handleSubmit}>
         <div className="mb-4">
@@ -168,7 +277,7 @@ export default function ActivityLogForm() {
             onChange={(e) => setDate(e.target.value)}
             className="w-full p-2 bg-gray-700 rounded text-white"
             max={new Date().toISOString().split('T')[0]} // Disable future dates
-            disabled={isFormLoading}
+            disabled={isFormLoading || isNetworkUnavailable}
             required
           />
         </div>
@@ -183,7 +292,7 @@ export default function ActivityLogForm() {
               onChange={(e) => setSteps(Number(e.target.value))}
               className="w-full p-2 bg-gray-700 rounded text-white"
               min="1"
-              disabled={isFormLoading}
+              disabled={isFormLoading || isNetworkUnavailable}
               required
             />
             <p className="text-xs text-gray-400 mt-1">
@@ -202,7 +311,7 @@ export default function ActivityLogForm() {
               onChange={(e) => setDuration(Number(e.target.value))}
               className="w-full p-2 bg-gray-700 rounded text-white"
               min="1"
-              disabled={isFormLoading}
+              disabled={isFormLoading || isNetworkUnavailable}
               required
             />
             <p className="text-xs text-gray-400 mt-1">
@@ -221,7 +330,7 @@ export default function ActivityLogForm() {
               onChange={(e) => setDistance(Number(e.target.value))}
               className="w-full p-2 bg-gray-700 rounded text-white"
               min="1"
-              disabled={isFormLoading}
+              disabled={isFormLoading || isNetworkUnavailable}
               required
             />
             <p className="text-xs text-gray-400 mt-1">
@@ -232,13 +341,16 @@ export default function ActivityLogForm() {
         
         <button
           type="submit"
-          className={`w-full ${isFormLoading 
-            ? 'bg-indigo-800 cursor-not-allowed' 
-            : 'bg-indigo-600 hover:bg-indigo-700'
+          className={`w-full ${
+            isFormLoading || isNetworkUnavailable
+              ? 'bg-gray-600 cursor-not-allowed' 
+              : 'bg-indigo-600 hover:bg-indigo-700'
           } text-white py-2 rounded font-medium flex justify-center items-center`}
-          disabled={isFormLoading}
+          disabled={isFormLoading || isNetworkUnavailable}
         >
-          {isFormLoading ? (
+          {isNetworkUnavailable ? (
+            <span>{isOffline ? "Offline" : "Server Unavailable"} - Cannot Log Activities</span>
+          ) : isFormLoading ? (
             <>
               <span className="mr-2">Saving...</span>
               <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
