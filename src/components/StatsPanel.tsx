@@ -2,7 +2,7 @@
 'use client';
 
 import { useWalkContext } from '@/contexts/WalkContext';
-import { useMemo, useEffect, useRef } from 'react';
+import { useMemo, useEffect, useRef, useState } from 'react';
 import { format, isToday } from 'date-fns';
 
 interface StatsPanelProps {
@@ -13,6 +13,7 @@ export default function StatsPanel({ selectedDate }: StatsPanelProps) {
   const { activities, userProfile, isLoading, error, fetchActivities } = useWalkContext();
   const today = new Date();
   const initialFetchDone = useRef(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
   
   // If no date is provided, use today
   const targetDate = selectedDate || today;
@@ -20,7 +21,13 @@ export default function StatsPanel({ selectedDate }: StatsPanelProps) {
   // Fetch activities on component mount - with safety check to prevent loops
   useEffect(() => {
     if (!initialFetchDone.current && userProfile?.id && !isLoading) {
-      fetchActivities();
+      fetchActivities().catch(err => {
+        if (err?.response?.status === 404) {
+          setConnectionError("API endpoint not found. Please check server configuration.");
+        } else if (err?.message?.includes('Network Error')) {
+          setConnectionError("Cannot connect to server. Please check your connection.");
+        }
+      });
       initialFetchDone.current = true;
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -43,8 +50,8 @@ export default function StatsPanel({ selectedDate }: StatsPanelProps) {
     try {
       // Filter activities for the selected date - more precise comparison
       const dateString = format(targetDate, 'yyyy-MM-dd');
-      const  dayActivities = activities.filter(activity => 
-      activity.date === dateString
+      const dayActivities = activities.filter(activity => 
+        activity.date === dateString
       );
       
       // If no activities for this date, return default stats
@@ -86,9 +93,9 @@ export default function StatsPanel({ selectedDate }: StatsPanelProps) {
       
       if (type === 'steps') {
         progress = (stats.steps / value) * 100;
-      } else {
+      } else if (type === 'distance') {
         progress = (stats.distance / value) * 100;
-      }
+      } 
       
       // Ensure progress is between 0 and 100
       return Math.min(100, Math.max(0, progress));
@@ -131,7 +138,7 @@ export default function StatsPanel({ selectedDate }: StatsPanelProps) {
         
         <div className="flex items-center">
           {userProfile && userProfile.dailyGoal && (
-            <div className="flex items-center mr-4">
+            <div className="hidden md:flex items-center mr-4">
               <p className="text-sm mr-2">
                 {isGoalMet 
                   ? '🎉 Daily goal achieved!' 
@@ -146,15 +153,24 @@ export default function StatsPanel({ selectedDate }: StatsPanelProps) {
             </div>
           )}
           
-          {/* Refresh button with loading indicator */}
+          {/* Mobile-only goal display */}
+          {userProfile && userProfile.dailyGoal && (
+            <div className="flex md:hidden items-center mr-2">
+              <p className="text-xs whitespace-nowrap">
+                {isGoalMet ? '🎉 Goal met!' : `${Math.round(goalProgress)}%`}
+              </p>
+            </div>
+          )}
+          
+          {/* Refresh button with loading indicator - mobile optimized */}
           <button 
             onClick={() => {
-              // Reset the initial fetch ref so we can fetch again
               initialFetchDone.current = false;
               fetchActivities();
             }}
             disabled={isLoading}
             className={`text-sm text-gray-400 hover:text-white flex items-center ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+            aria-label="Refresh data"
           >
             {isLoading ? (
               <>
@@ -162,24 +178,24 @@ export default function StatsPanel({ selectedDate }: StatsPanelProps) {
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
-                Refreshing...
+                <span className="hidden md:inline">Refreshing...</span>
               </>
             ) : (
               <>
-                <svg className="h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="h-4 w-4 md:mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
-                Refresh
+                <span className="hidden md:inline">Refresh</span>
               </>
             )}
           </button>
         </div>
       </div>
       
-      {/* Error message */}
-      {error && (
-        <div className="mb-4 p-3 bg-red-900/50 border border-red-800 rounded text-red-200 text-sm">
-          {error}
+      {/* Error messages */}
+      {(error || connectionError) && (
+        <div className="mb-4 p-2 md:p-3 bg-red-900/50 border border-red-800 rounded text-red-200 text-xs md:text-sm">
+          {connectionError || error}
         </div>
       )}
       
@@ -216,6 +232,7 @@ export default function StatsPanel({ selectedDate }: StatsPanelProps) {
             {Math.round(stats.duration)}
             <span className="text-2xl">min</span>
           </p>
+          
         </div>
       </div>
     </div>
