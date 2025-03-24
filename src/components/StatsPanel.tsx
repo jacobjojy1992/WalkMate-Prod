@@ -225,9 +225,12 @@ export default function StatsPanel({ selectedDate }: StatsPanelProps) {
             <span className="text-2xl">km</span>
           </p>
           {userProfile?.dailyGoal?.type === 'distance' && (
-            <p className={`text-sm ${isGoalMet ? 'text-green-500 font-medium' : 'text-green-400'} mt-1`}>
+            <p className={`text-sm ${isGoalMet 
+              ? 'text-green-500 font-medium' 
+              : 'text-green-400'} mt-1`}>
               Goal: {(userProfile.dailyGoal.value / 1000).toFixed(2)} km
-            </p>
+              {isGoalMet && <span className="ml-1">✓</span>}
+          </p>
           )}
         </div>
         

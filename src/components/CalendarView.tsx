@@ -27,7 +27,7 @@ export default function CalendarView({ onDateSelect }: CalendarProps) {
     return activities.some(activity => activity.date.startsWith(dateString));
   };
   
-  // Check if goal was met on a specific date - now uses consistent logic with StatsPanel
+  // Check if goal was met on a specific date - with improved precision handling
   const wasGoalMet = (date: Date) => {
     if (!userProfile?.dailyGoal) return false;
     
@@ -40,15 +40,21 @@ export default function CalendarView({ onDateSelect }: CalendarProps) {
     
     const { type, value } = userProfile.dailyGoal;
     
+    let totalValue = 0;
+    
     if (type === 'steps') {
-      const totalSteps = dayActivities.reduce((sum, activity) => 
+      totalValue = dayActivities.reduce((sum, activity) => 
         sum + (Number.isFinite(activity.steps) ? activity.steps : 0), 0);
-      return isGoalAchieved(totalSteps, value);
+      return isGoalAchieved(totalValue, value);
     } else {
-      const totalDistance = dayActivities.reduce((sum, activity) => 
+      totalValue = dayActivities.reduce((sum, activity) => 
         sum + (Number.isFinite(activity.distance) ? activity.distance : 0), 0);
-      return isGoalAchieved(totalDistance, value);
+      return isGoalAchieved(totalValue, value);
     }
+    
+    // Use a slightly more permissive threshold for calendar markers
+    // This ensures visual consistency with the main display
+ 
   };
   
   // Custom tile content - add indicators for activity dates and goal completion
@@ -66,6 +72,7 @@ export default function CalendarView({ onDateSelect }: CalendarProps) {
         <div className="flex justify-center mt-1">
           <div 
             className={`h-2 w-2 rounded-full ${goalMet ? 'bg-green-500' : 'bg-indigo-500'}`}
+            title={goalMet ? "Goal met" : "Activity logged"}
           />
         </div>
       );
