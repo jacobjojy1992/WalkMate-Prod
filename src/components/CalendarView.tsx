@@ -5,6 +5,7 @@ import { useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useWalkContext } from '@/contexts/WalkContext';
 import { format, isAfter } from 'date-fns';
+import { isGoalAchieved } from '@/utils/goalUtils';
 import 'react-calendar/dist/Calendar.css';
 
 // Import Calendar dynamically with SSR disabled
@@ -26,9 +27,9 @@ export default function CalendarView({ onDateSelect }: CalendarProps) {
     return activities.some(activity => activity.date.startsWith(dateString));
   };
   
-  // Check if goal was met on a specific date
+  // Check if goal was met on a specific date - now uses consistent logic with StatsPanel
   const wasGoalMet = (date: Date) => {
-    if (!userProfile) return false;
+    if (!userProfile?.dailyGoal) return false;
     
     const dateString = format(date, 'yyyy-MM-dd');
     const dayActivities = activities.filter(activity => 
@@ -40,11 +41,13 @@ export default function CalendarView({ onDateSelect }: CalendarProps) {
     const { type, value } = userProfile.dailyGoal;
     
     if (type === 'steps') {
-      const totalSteps = dayActivities.reduce((sum, activity) => sum + activity.steps, 0);
-      return totalSteps >= value;
+      const totalSteps = dayActivities.reduce((sum, activity) => 
+        sum + (Number.isFinite(activity.steps) ? activity.steps : 0), 0);
+      return isGoalAchieved(totalSteps, value);
     } else {
-      const totalDistance = dayActivities.reduce((sum, activity) => sum + activity.distance, 0);
-      return totalDistance >= value;
+      const totalDistance = dayActivities.reduce((sum, activity) => 
+        sum + (Number.isFinite(activity.distance) ? activity.distance : 0), 0);
+      return isGoalAchieved(totalDistance, value);
     }
   };
   

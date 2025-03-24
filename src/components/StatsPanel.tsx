@@ -4,6 +4,7 @@
 import { useWalkContext } from '@/contexts/WalkContext';
 import { useMemo, useEffect, useRef, useState } from 'react';
 import { format, isToday } from 'date-fns';
+import { isGoalAchieved, calculateGoalProgress } from '@/utils/goalUtils';
 
 interface StatsPanelProps {
   selectedDate?: Date;
@@ -80,35 +81,38 @@ export default function StatsPanel({ selectedDate }: StatsPanelProps) {
     }
   }, [activities, targetDate]);
   
-  // Calculate goal progress with improved precision for equality checking
+  // Calculate goal progress with improved precision
   const goalProgress = useMemo(() => {
-    if (!userProfile || !userProfile.dailyGoal) return 0;
+    if (!userProfile?.dailyGoal) return 0;
     
     try {
       const { type, value } = userProfile.dailyGoal;
       
-      if (!Number.isFinite(value) || value <= 0) return 0;
-      
-      let progress = 0;
-      
       if (type === 'steps') {
-        // Add precision for steps calculation
-        progress = Math.round((stats.steps / value) * 100 * 10) / 10;
+        return calculateGoalProgress(stats.steps, value);
       } else if (type === 'distance') {
-        // Add precision for distance calculation
-        progress = Math.round((stats.distance / value) * 100 * 10) / 10;
-      } 
+        return calculateGoalProgress(stats.distance, value);
+      }
       
-      // Ensure progress is between 0 and 100
-      return Math.min(100, Math.max(0, progress));
+      return 0;
     } catch (error) {
       console.error('Error calculating goal progress:', error);
       return 0;
     }
   }, [stats, userProfile]);
   
-  // Check if goal is met - more precise check to handle floating point issues
-  const isGoalMet = goalProgress >= 99.9;
+  // Check if goal is met with consistent logic
+  const isGoalMet = useMemo(() => {
+    if (!userProfile?.dailyGoal) return false;
+    
+    const { type, value } = userProfile.dailyGoal;
+    if (type === 'steps') {
+      return isGoalAchieved(stats.steps, value);
+    } else if (type === 'distance') {
+      return isGoalAchieved(stats.distance, value);
+    }
+    return false;
+  }, [stats, userProfile]);
   
   // Format the date heading
   const dateHeading = isToday(targetDate) 
@@ -207,7 +211,7 @@ export default function StatsPanel({ selectedDate }: StatsPanelProps) {
           <h3 className="text-gray-400 font-medium">Total Steps</h3>
           <p className="text-4xl font-bold mt-2">{Math.round(stats.steps).toLocaleString()}</p>
           {userProfile?.dailyGoal?.type === 'steps' && (
-            <p className="text-sm text-green-400 mt-1">
+            <p className={`text-sm ${isGoalMet ? 'text-green-500 font-medium' : 'text-green-400'} mt-1`}>
               Goal: {userProfile.dailyGoal.value.toLocaleString()} steps
             </p>
           )}
@@ -221,7 +225,7 @@ export default function StatsPanel({ selectedDate }: StatsPanelProps) {
             <span className="text-2xl">km</span>
           </p>
           {userProfile?.dailyGoal?.type === 'distance' && (
-            <p className="text-sm text-green-400 mt-1">
+            <p className={`text-sm ${isGoalMet ? 'text-green-500 font-medium' : 'text-green-400'} mt-1`}>
               Goal: {(userProfile.dailyGoal.value / 1000).toFixed(2)} km
             </p>
           )}
@@ -234,7 +238,6 @@ export default function StatsPanel({ selectedDate }: StatsPanelProps) {
             {Math.round(stats.duration)}
             <span className="text-2xl">min</span>
           </p>
-          
         </div>
       </div>
     </div>
