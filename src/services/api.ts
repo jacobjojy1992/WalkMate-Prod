@@ -7,21 +7,12 @@ const API_URL = 'http://192.168.0.107:3001';
 
 // A robust path join function that handles slashes properly
 const pathJoin = (...parts: string[]): string => {
-  return parts
+  // Make sure the result starts with a slash and doesn't have double slashes
+  return '/' + parts
     .map(part => part.replace(/(^\/+|\/+$)/g, ''))
     .filter(part => part.length)
     .join('/');
 };
-
-// Create an axios instance with configuration
-const apiClient = axios.create({
-  baseURL: API_URL,
-  timeout: 10000, // 10 second timeout
-  headers: {
-    'Accept': 'application/json',
-    'Content-Type': 'application/json'
-  }
-});
 
 // Define the API response structure for TypeScript
 interface BackendResponse<T> {
@@ -34,10 +25,27 @@ interface BackendResponse<T> {
 const logDetailedError = (error: unknown, context: string): void => {
   console.error(`API Error in ${context}:`, error);
   
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // Use a proper type guard for axios errors
   if (error && typeof error === 'object' && 'isAxiosError' in error) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const axiosError = error as any;
+    // Define a proper type for Axios errors
+    interface AxiosErrorType {
+      message: string;
+      isAxiosError: boolean;
+      response?: {
+        status?: number;
+        statusText?: string;
+        data?: unknown;
+      };
+      config?: {
+        url?: string;
+        method?: string;
+        baseURL?: string;
+      };
+    }
+    
+    // Cast error to our defined type
+    const axiosError = error as AxiosErrorType;
+    
     console.error('Detailed error info:', {
       message: axiosError.message,
       status: axiosError.response?.status,
@@ -46,7 +54,9 @@ const logDetailedError = (error: unknown, context: string): void => {
       url: axiosError.config?.url,
       method: axiosError.config?.method,
       baseURL: axiosError.config?.baseURL,
-      fullUrl: axiosError.config?.baseURL + axiosError.config?.url
+      fullUrl: axiosError.config?.baseURL && axiosError.config?.url 
+        ? axiosError.config.baseURL + axiosError.config.url 
+        : undefined
     });
   }
 };
@@ -59,10 +69,9 @@ export const userApi = {
    */
   getAll: async (): Promise<ApiResponse<ApiUser[]>> => {
     try {
-      const fullUrl = `${API_URL}/${pathJoin('api', 'users')}`;
+      const fullUrl = `${API_URL}${pathJoin('api', 'users')}`;
       console.log('Making API request to: GET', fullUrl);
       
-      // Try direct axios call instead of using apiClient
       const response = await axios.get<BackendResponse<ApiUser[]>>(fullUrl);
       console.log('API response success:', response.status);
       return {
@@ -88,10 +97,9 @@ export const userApi = {
    */
   getById: async (id: string): Promise<ApiResponse<ApiUser>> => {
     try {
-      const fullUrl = `${API_URL}/${pathJoin('api', 'users', id)}`;
+      const fullUrl = `${API_URL}${pathJoin('api', 'users', id)}`;
       console.log('Making API request to: GET', fullUrl);
       
-      // Try direct axios call with full URL
       const response = await axios.get<BackendResponse<ApiUser>>(fullUrl);
       console.log('API response success:', response.status);
       return {
@@ -121,7 +129,7 @@ export const userApi = {
     goalValue: number 
   }): Promise<ApiResponse<ApiUser>> => {
     try {
-      const fullUrl = `${API_URL}/${pathJoin('api', 'users')}`;
+      const fullUrl = `${API_URL}${pathJoin('api', 'users')}`;
       console.log('Making API request to: POST', fullUrl, userData);
       
       const response = await axios.post<BackendResponse<ApiUser>>(fullUrl, userData);
@@ -154,7 +162,7 @@ export const userApi = {
     goalValue?: number;
   }): Promise<ApiResponse<ApiUser>> => {
     try {
-      const fullUrl = `${API_URL}/${pathJoin('api', 'users', id)}`;
+      const fullUrl = `${API_URL}${pathJoin('api', 'users', id)}`;
       console.log('Making API request to: PUT', fullUrl, userData);
       
       const response = await axios.put<BackendResponse<ApiUser>>(fullUrl, userData);
@@ -182,7 +190,7 @@ export const userApi = {
    */
   getUserStreak: async (id: string): Promise<ApiResponse<{streak: number}>> => {
     try {
-      const fullUrl = `${API_URL}/${pathJoin('api', 'users', id, 'streak')}`;
+      const fullUrl = `${API_URL}${pathJoin('api', 'users', id, 'streak')}`;
       console.log('Making API request to: GET', fullUrl);
       
       const response = await axios.get<BackendResponse<{streak: number}>>(fullUrl);
@@ -211,7 +219,7 @@ export const userApi = {
    */
   getWeeklyReport: async (id: string, date?: string): Promise<ApiResponse<Record<string, unknown>>> => {
     try {
-      const baseUrl = `${API_URL}/${pathJoin('api', 'users', id, 'weekly-report')}`;
+      const baseUrl = `${API_URL}${pathJoin('api', 'users', id, 'weekly-report')}`;
       const fullUrl = date ? `${baseUrl}?date=${date}` : baseUrl;
       
       console.log('Making API request to: GET', fullUrl);
@@ -241,11 +249,6 @@ export const walkApi = {
    * @param userId The user ID
    * @returns List of all walks for the user
    */
-  /**
- * Get all walks for a specific user
- * @param userId The user ID
- * @returns List of all walks for the user
- */
   getAllForUser: async (userId: string): Promise<ApiResponse<ApiWalk[]>> => {
     try {
       // Define all possible URL patterns that might match your backend routes
@@ -284,7 +287,7 @@ export const walkApi = {
           // Handle the response data carefully with proper type checking
           if (response.data) {
             // Check if response follows our expected BackendResponse structure
-            if ('data' in response.data) {
+            if (response.data && typeof response.data === 'object' && 'data' in response.data) {
               const responseData = response.data.data;
               console.log(`Found ${Array.isArray(responseData) ? responseData.length : 0} activities`);
               
@@ -334,7 +337,7 @@ export const walkApi = {
           
           // Filter for only this user's activities
           const userActivities = activities.filter(
-            (activity: any) => activity.userId === userId
+            (activity: { userId: string }) => activity.userId === userId
           );
           
           if (userActivities.length > 0) {
@@ -381,8 +384,8 @@ export const walkApi = {
   getWalksByDate: async (userId: string, date: string): Promise<ApiResponse<ApiWalk[]>> => {
     try {
       // Try both possible URL patterns
-      const url1 = `${API_URL}/${pathJoin('api', 'walks', 'user', userId, 'date', date)}`;
-      const url2 = `${API_URL}/${pathJoin('api', 'users', userId, 'walks', 'date', date)}`;
+      const url1 = `${API_URL}${pathJoin('api', 'walks', 'user', userId, 'date', date)}`;
+      const url2 = `${API_URL}${pathJoin('api', 'users', userId, 'walks', 'date', date)}`;
       
       console.log('Making API request to: GET', url1);
       try {
@@ -431,7 +434,7 @@ export const walkApi = {
     date: string;
   }): Promise<ApiResponse<ApiWalk>> => {
     try {
-      const fullUrl = `${API_URL}/${pathJoin('api', 'walks')}`;
+      const fullUrl = `${API_URL}${pathJoin('api', 'walks')}`;
       console.log('Making API request to: POST', fullUrl, walkData);
       
       const response = await axios.post<BackendResponse<ApiWalk>>(fullUrl, walkData);
@@ -459,7 +462,7 @@ export const walkApi = {
    */
   deleteWalk: async (id: string): Promise<ApiResponse<{message: string}>> => {
     try {
-      const fullUrl = `${API_URL}/${pathJoin('api', 'walks', id)}`;
+      const fullUrl = `${API_URL}${pathJoin('api', 'walks', id)}`;
       console.log('Making API request to: DELETE', fullUrl);
       
       const response = await axios.delete<BackendResponse<{message: string}>>(fullUrl);
@@ -488,7 +491,7 @@ export const walkApi = {
    */
   getStats: async (userId: string, period?: string): Promise<ApiResponse<Record<string, unknown>>> => {
     try {
-      const baseUrl = `${API_URL}/${pathJoin('api', 'walks', 'user', userId, 'stats')}`;
+      const baseUrl = `${API_URL}${pathJoin('api', 'walks', 'user', userId, 'stats')}`;
       const fullUrl = period ? `${baseUrl}?period=${period}` : baseUrl;
       
       console.log('Making API request to: GET', fullUrl);
@@ -514,7 +517,7 @@ export const walkApi = {
 // Health check - useful for checking if the API is available
 export const healthCheck = async (): Promise<ApiResponse<{status: string}>> => {
   try {
-    const fullUrl = `${API_URL}/${pathJoin('api', 'health')}`;
+    const fullUrl = `${API_URL}${pathJoin('api', 'health')}`;
     console.log('Making API request to: GET', fullUrl);
     
     const response = await axios.get<{status: string}>(fullUrl);

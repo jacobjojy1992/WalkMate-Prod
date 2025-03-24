@@ -80,7 +80,7 @@ export default function StatsPanel({ selectedDate }: StatsPanelProps) {
     }
   }, [activities, targetDate]);
   
-  // Calculate goal progress
+  // Calculate goal progress with improved precision for equality checking
   const goalProgress = useMemo(() => {
     if (!userProfile || !userProfile.dailyGoal) return 0;
     
@@ -92,9 +92,11 @@ export default function StatsPanel({ selectedDate }: StatsPanelProps) {
       let progress = 0;
       
       if (type === 'steps') {
-        progress = (stats.steps / value) * 100;
+        // Add precision for steps calculation
+        progress = Math.round((stats.steps / value) * 100 * 10) / 10;
       } else if (type === 'distance') {
-        progress = (stats.distance / value) * 100;
+        // Add precision for distance calculation
+        progress = Math.round((stats.distance / value) * 100 * 10) / 10;
       } 
       
       // Ensure progress is between 0 and 100
@@ -105,8 +107,8 @@ export default function StatsPanel({ selectedDate }: StatsPanelProps) {
     }
   }, [stats, userProfile]);
   
-  // Check if goal is met
-  const isGoalMet = goalProgress >= 100;
+  // Check if goal is met - more precise check to handle floating point issues
+  const isGoalMet = goalProgress >= 99.9;
   
   // Format the date heading
   const dateHeading = isToday(targetDate) 
@@ -205,7 +207,7 @@ export default function StatsPanel({ selectedDate }: StatsPanelProps) {
           <h3 className="text-gray-400 font-medium">Total Steps</h3>
           <p className="text-4xl font-bold mt-2">{Math.round(stats.steps).toLocaleString()}</p>
           {userProfile?.dailyGoal?.type === 'steps' && (
-            <p className="text-sm text-gray-400 mt-1">
+            <p className="text-sm text-green-400 mt-1">
               Goal: {userProfile.dailyGoal.value.toLocaleString()} steps
             </p>
           )}
@@ -215,12 +217,12 @@ export default function StatsPanel({ selectedDate }: StatsPanelProps) {
         <div className="bg-gray-800 rounded-lg p-6">
           <h3 className="text-gray-400 font-medium">Distance</h3>
           <p className="text-4xl font-bold mt-2">
-            {(stats.distance / 1000).toFixed(1)}
+            {(stats.distance / 1000).toFixed(2)}
             <span className="text-2xl">km</span>
           </p>
           {userProfile?.dailyGoal?.type === 'distance' && (
-            <p className="text-sm text-gray-400 mt-1">
-              Goal: {(userProfile.dailyGoal.value / 1000).toFixed(1)} km
+            <p className="text-sm text-green-400 mt-1">
+              Goal: {(userProfile.dailyGoal.value / 1000).toFixed(2)} km
             </p>
           )}
         </div>
