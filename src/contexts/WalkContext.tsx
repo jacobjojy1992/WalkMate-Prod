@@ -177,52 +177,48 @@ export function WalkProvider({ children }: { children: ReactNode }) {
     initializeData();
   }, [fetchActivitiesForUser]);
 
-  // Function to add a new activity - wrapped in useCallback
-  const addActivity = useCallback(async (activity: Omit<WalkActivity, 'id' | 'userId'>) => {
-    if (!userProfile?.id) {
-      setError('Cannot add activity: No user profile found');
-      return;
-    }
+// Function to add a new activity - wrapped in useCallback
+const addActivity = useCallback(async (activity: Omit<WalkActivity, 'id' | 'userId'>) => {
+  if (!userProfile?.id) {
+    setError('Cannot add activity: No user profile found');
+    return;
+  }
+  
+  setIsLoading(true);
+  setError(null);
+  
+  try {
+    // Parse the timestamp to ensure we're using the correct date
+    const activityDateTime = new Date(activity.timestamp);
+    console.log('Activity timestamp:', activity.timestamp);
+    console.log('Parsed activity date:', activityDateTime.toISOString());
     
-    setIsLoading(true);
-    setError(null);
+    // Prepare activity data for API - use the full ISO string from the timestamp
+    const walkData = {
+      userId: userProfile.id,
+      steps: activity.steps,
+      distance: activity.distance,
+      duration: activity.duration,
+      date: activityDateTime.toISOString() // Ensure proper ISO format
+    };
     
-    try {
-      // Prepare activity data for API
-      const walkData = {
-        userId: userProfile.id,
-        steps: activity.steps,
-        distance: activity.distance,
-        duration: activity.duration,
-        date: activity.timestamp // Use timestamp as the full date with time
-      };
+    // Send to API
+    const response = await walkApi.create(walkData);
+    
+    if (response.success && response.data) {
+      // Convert API response to our format and add to state
+      const newActivity = apiWalkToWalkActivity(response.data);
       
-      // Send to API
-      const response = await walkApi.create(walkData);
+      // Log for debugging
+      console.log('API returned activity with date:', response.data.date);
+      console.log('Converted to frontend activity with date:', newActivity.date);
       
-      if (response.success && response.data) {
-        // Convert API response to our format and add to state
-        const newActivity = apiWalkToWalkActivity(response.data);
-        setActivities(prev => [...prev, newActivity]);
-        
-        // Also update localStorage as a backup
-        localStorage.setItem('walkActivities', JSON.stringify([...activities, newActivity]));
-      } else {
-        setError(response.error || 'Failed to add activity');
-        
-        // Fallback: Add to localStorage anyway
-        const newActivity = {
-          ...activity,
-          id: Date.now().toString(),
-          userId: userProfile.id
-        } as WalkActivity;
-        
-        setActivities(prev => [...prev, newActivity]);
-        localStorage.setItem('walkActivities', JSON.stringify([...activities, newActivity]));
-      }
-    } catch (err) {
-      console.error('Error adding activity:', err);
-      setError('Failed to add activity. Please try again.');
+      setActivities(prev => [...prev, newActivity]);
+      
+      // Also update localStorage as a backup
+      localStorage.setItem('walkActivities', JSON.stringify([...activities, newActivity]));
+    } else {
+      setError(response.error || 'Failed to add activity');
       
       // Fallback: Add to localStorage anyway
       const newActivity = {
@@ -233,10 +229,24 @@ export function WalkProvider({ children }: { children: ReactNode }) {
       
       setActivities(prev => [...prev, newActivity]);
       localStorage.setItem('walkActivities', JSON.stringify([...activities, newActivity]));
-    } finally {
-      setIsLoading(false);
     }
-  }, [activities, userProfile]);
+  } catch (err) {
+    console.error('Error adding activity:', err);
+    setError('Failed to add activity. Please try again.');
+    
+    // Fallback: Add to localStorage anyway
+    const newActivity = {
+      ...activity,
+      id: Date.now().toString(),
+      userId: userProfile.id
+    } as WalkActivity;
+    
+    setActivities(prev => [...prev, newActivity]);
+    localStorage.setItem('walkActivities', JSON.stringify([...activities, newActivity]));
+  } finally {
+    setIsLoading(false);
+  }
+}, [activities, userProfile]);
 
   // Function to create or update user profile - wrapped in useCallback
   const setUserProfile = useCallback(async (profile: UserProfile) => {

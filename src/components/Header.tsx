@@ -132,8 +132,8 @@ export default function Header() {
     const startTime = startTimeRef.current;
     
     // Log the exact start time for debugging
-    console.log('Activity started at:', startTime);
-    console.log('Start date for activity:', format(startTime, 'yyyy-MM-dd'));
+    console.log('Activity started at:', startTime.toISOString());
+    console.log('Current time at stop:', new Date().toISOString());
     
     // Calculate final duration in minutes (rounded)
     const durationMinutes = Math.max(1, Math.round(elapsedTime / 60));
@@ -161,6 +161,7 @@ export default function Header() {
     setIsWalking(false);
     setIsPaused(false);
     setElapsedTime(0);
+    startTimeRef.current = null;
     pausedTimeRef.current = 0;
     lastPauseRef.current = null;
     
