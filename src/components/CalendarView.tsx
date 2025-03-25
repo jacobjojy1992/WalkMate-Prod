@@ -156,7 +156,7 @@ export default function CalendarView({ onDateSelect }: CalendarProps) {
         }
       `}</style>
       
-      <h2 className="text-xl font-semibold mb-4">Calendar</h2>
+      <h2 className="text-xl font-semibold mb-4">Calendar- Stats View</h2>
       
       <Calendar
         onChange={(value) => {

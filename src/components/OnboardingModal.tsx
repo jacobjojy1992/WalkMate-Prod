@@ -61,7 +61,7 @@ export default function OnboardingModal({ onClose }: OnboardingModalProps) {
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-gray-800 p-6 rounded-lg max-w-md w-full">
         <h2 className="text-xl font-bold mb-4">Welcome to WalkMate!</h2>
-        <p className="mb-4">Please tell us a bit about yourself to get started.</p>
+        <p className="mb-4">Get Set Go!</p>
         
         {/* Error messages */}
         {(error || formError) && (
@@ -84,7 +84,7 @@ export default function OnboardingModal({ onClose }: OnboardingModalProps) {
           </div>
           
           <div className="mb-4">
-            <label className="block mb-2">Daily Goal Type</label>
+            <label className="block mb-2">Set Your Daily Goal Type</label>
             <select
               value={goalType}
               onChange={(e) => setGoalType(e.target.value as 'steps' | 'distance')}
@@ -97,7 +97,7 @@ export default function OnboardingModal({ onClose }: OnboardingModalProps) {
           </div>
           
           <div className="mb-6">
-            <label className="block mb-2">Goal Value</label>
+            <label className="block mb-2">Daily Goal</label>
             <input
               type="number"
               value={goalValue === 0 ? '' : goalValue}
