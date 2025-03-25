@@ -12,7 +12,7 @@ export default function Header() {
   const [elapsedTime, setElapsedTime] = useState(0); // in seconds
   
   // Use refs to store time information to prevent issues with closure captures
-  const startTimeRef = useRef<number | null>(null);
+  const startTimeRef = useRef<Date | null>(null); // Changed to store Date object instead of timestamp
   const pausedTimeRef = useRef<number>(0);
   const lastPauseRef = useRef<number | null>(null);
   
@@ -34,7 +34,8 @@ export default function Header() {
         if (startTimeRef.current) {
           const now = Date.now();
           // Calculate elapsed time in seconds, accounting for paused time
-          const elapsed = Math.floor((now - startTimeRef.current - pausedTimeRef.current) / 1000);
+          const startTimeMs = startTimeRef.current.getTime();
+          const elapsed = Math.floor((now - startTimeMs - pausedTimeRef.current) / 1000);
           setElapsedTime(Math.max(0, elapsed)); // Ensure it's never negative
         }
       }, 1000);
@@ -66,7 +67,7 @@ export default function Header() {
   // Handle start walking
   const handleStartWalking = () => {
     // Reset everything to initial state
-    startTimeRef.current = Date.now();
+    startTimeRef.current = new Date(); // Store the actual Date object
     pausedTimeRef.current = 0;
     lastPauseRef.current = null;
     setElapsedTime(0);
@@ -101,6 +102,10 @@ export default function Header() {
       timerRef.current = null;
     }
     
+    // Store the start time and end time
+    const startTime = startTimeRef.current;
+    
+    
     // Calculate final duration in minutes (rounded)
     const durationMinutes = Math.max(1, Math.round(elapsedTime / 60));
     
@@ -108,13 +113,18 @@ export default function Header() {
     const steps = durationMinutes * 100;
     const distance = durationMinutes * 75;
     
-    // Add the activity to the log
+    // Use the start time for the activity date and add a human-readable time
+    const activityDate = format(startTime, 'yyyy-MM-dd');
+    
+    
+    // Add the activity to the log with the start time information
     addActivity({
-      date: format(new Date(), 'yyyy-MM-dd'),
+      date: activityDate, // Use the start date
       steps,
       distance,
       duration: durationMinutes,
-      timestamp: new Date().toISOString()
+      timestamp: startTime.toISOString() // Use the start time as the timestamp
+      
     });
     
     // Reset states

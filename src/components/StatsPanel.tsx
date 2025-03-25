@@ -213,6 +213,7 @@ export default function StatsPanel({ selectedDate }: StatsPanelProps) {
           {userProfile?.dailyGoal?.type === 'steps' && (
             <p className={`text-sm ${isGoalMet ? 'text-green-500 font-medium' : 'text-green-400'} mt-1`}>
               Goal: {userProfile.dailyGoal.value.toLocaleString()} steps
+              {isGoalMet && <span className="ml-1">✓</span>}
             </p>
           )}
         </div>
