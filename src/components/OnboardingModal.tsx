@@ -97,7 +97,7 @@ export default function OnboardingModal({ onClose }: OnboardingModalProps) {
           </div>
           
           <div className="mb-6">
-            <label className="block mb-2">Daily Goal</label>
+            <label className="block mb-2">Set Your Daily Goal</label>
             <input
               type="number"
               value={goalValue === 0 ? '' : goalValue}
