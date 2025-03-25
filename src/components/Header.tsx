@@ -10,17 +10,33 @@ export default function Header() {
   const [isWalking, setIsWalking] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0); // in seconds
+  const [headerDate, setHeaderDate] = useState(format(new Date(), 'EEEE, MMMM d, yyyy'));
   
   // Use refs to store time information to prevent issues with closure captures
-  const startTimeRef = useRef<Date | null>(null); // Changed to store Date object instead of timestamp
+  const startTimeRef = useRef<Date | null>(null);
   const pausedTimeRef = useRef<number>(0);
   const lastPauseRef = useRef<number | null>(null);
   
   // Timer reference
   const timerRef = useRef<number | null>(null);
   
-  // Format today's date as "Saturday, March 1, 2025"
-  const formattedDate = format(new Date(), 'EEEE, MMMM d, yyyy');
+  // Update the header date periodically to keep it current
+  useEffect(() => {
+    // Update date immediately
+    updateHeaderDate();
+    
+    // Set up an interval to update the date every minute
+    const dateInterval = window.setInterval(updateHeaderDate, 60000);
+    
+    return () => {
+      window.clearInterval(dateInterval);
+    };
+  }, []);
+  
+  // Function to update the header date
+  const updateHeaderDate = () => {
+    setHeaderDate(format(new Date(), 'EEEE, MMMM d, yyyy'));
+  };
   
   // Update timer when walking
   useEffect(() => {
@@ -64,10 +80,20 @@ export default function Header() {
     ].join(':');
   };
   
-  // Handle start walking
+  // Handle start walking - with explicit date creation
   const handleStartWalking = () => {
+    // CRITICAL: Force a completely new Date object to be created
+    const currentStartTime = new Date();
+    
+    // Log the exact time for debugging
+    console.log('Starting timer with date:', currentStartTime);
+    console.log('Date string:', currentStartTime.toISOString());
+    
+    // Update header date to ensure it's current
+    updateHeaderDate();
+    
     // Reset everything to initial state
-    startTimeRef.current = new Date(); // Store the actual Date object
+    startTimeRef.current = currentStartTime;
     pausedTimeRef.current = 0;
     lastPauseRef.current = null;
     setElapsedTime(0);
@@ -92,7 +118,7 @@ export default function Header() {
     setIsPaused(!isPaused);
   };
   
-  // Handle stop walking
+  // Handle stop walking - with explicit date creation
   const handleStopWalking = () => {
     if (!isWalking || !startTimeRef.current) return;
     
@@ -102,9 +128,12 @@ export default function Header() {
       timerRef.current = null;
     }
     
-    // Store the start time and end time
+    // Get the stored start time
     const startTime = startTimeRef.current;
     
+    // Log the exact start time for debugging
+    console.log('Activity started at:', startTime);
+    console.log('Start date for activity:', format(startTime, 'yyyy-MM-dd'));
     
     // Calculate final duration in minutes (rounded)
     const durationMinutes = Math.max(1, Math.round(elapsedTime / 60));
@@ -113,9 +142,8 @@ export default function Header() {
     const steps = durationMinutes * 100;
     const distance = durationMinutes * 75;
     
-    // Use the start time for the activity date and add a human-readable time
+    // Use the start time for the activity date
     const activityDate = format(startTime, 'yyyy-MM-dd');
-    
     
     // Add the activity to the log with the start time information
     addActivity({
@@ -124,16 +152,20 @@ export default function Header() {
       distance,
       duration: durationMinutes,
       timestamp: startTime.toISOString() // Use the start time as the timestamp
-      
     });
     
-    // Reset states
+    // Force a completely fresh date state by explicitly setting to null first
+    startTimeRef.current = null;
+    
+    // Reset all other states
     setIsWalking(false);
     setIsPaused(false);
     setElapsedTime(0);
-    startTimeRef.current = null;
     pausedTimeRef.current = 0;
     lastPauseRef.current = null;
+    
+    // Update header date to ensure it's current
+    updateHeaderDate();
   };
   
   return (
@@ -143,7 +175,7 @@ export default function Header() {
           <h1 className="text-3xl font-bold">
             Hi {userProfile?.name || 'there'}
           </h1>
-          <p className="text-gray-400">{formattedDate}</p>
+          <p className="text-gray-400">{headerDate}</p>
         </div>
         
         {!isWalking ? (
