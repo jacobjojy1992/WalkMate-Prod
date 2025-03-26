@@ -2,8 +2,9 @@
 import axios from 'axios';
 import { ApiResponse, ApiUser, ApiWalk } from '@/types';
 
-// Base URL for our API - use your computer's IP for mobile testing
-const API_URL = 'http://localhost:3001';
+
+// Base URL for our API - will use environment variable in production
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 // A robust path join function that handles slashes properly
 const pathJoin = (...parts: string[]): string => {
