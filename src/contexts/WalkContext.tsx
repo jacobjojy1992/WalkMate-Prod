@@ -47,15 +47,30 @@ const userProfileToApiUser = (profile: UserProfile): Partial<ApiUser> => {
   };
 };
 
+// UPDATED: Improved date handling to fix midnight timer issues
 const apiWalkToWalkActivity = (apiWalk: ApiWalk): WalkActivity => {
+  // Parse the date string to a Date object for more accurate date extraction
+  const walkDate = new Date(apiWalk.date);
+  
+  // Extract date components with proper timezone handling
+  const year = walkDate.getFullYear();
+  const month = String(walkDate.getMonth() + 1).padStart(2, '0');
+  const day = String(walkDate.getDate()).padStart(2, '0');
+  
+  // Create proper date string in YYYY-MM-DD format
+  const dateStr = `${year}-${month}-${day}`;
+  
+  console.log('Converting API walk date:', apiWalk.date);
+  console.log('To activity date:', dateStr);
+  
   return {
     id: apiWalk.id,
     userId: apiWalk.userId,
     steps: apiWalk.steps,
     distance: apiWalk.distance,
     duration: apiWalk.duration,
-    date: apiWalk.date.split('T')[0], // Get just the date part
-    timestamp: apiWalk.date  // Use the full ISO string for timestamp
+    date: dateStr, // Use the carefully constructed date string
+    timestamp: apiWalk.date // Keep the full ISO string for timestamp
   };
 };
 
@@ -177,76 +192,111 @@ export function WalkProvider({ children }: { children: ReactNode }) {
     initializeData();
   }, [fetchActivitiesForUser]);
 
-// Function to add a new activity - wrapped in useCallback
-const addActivity = useCallback(async (activity: Omit<WalkActivity, 'id' | 'userId'>) => {
-  if (!userProfile?.id) {
-    setError('Cannot add activity: No user profile found');
-    return;
-  }
-  
-  setIsLoading(true);
-  setError(null);
-  
-  try {
-    // Parse the timestamp to ensure we're using the correct date
-    const activityDateTime = new Date(activity.timestamp);
-    console.log('Activity timestamp:', activity.timestamp);
-    console.log('Parsed activity date:', activityDateTime.toISOString());
+  // UPDATED: Enhanced activity creation with improved date handling
+  const addActivity = useCallback(async (activity: Omit<WalkActivity, 'id' | 'userId'>) => {
+    if (!userProfile?.id) {
+      setError('Cannot add activity: No user profile found');
+      return;
+    }
     
-    // Prepare activity data for API - use the full ISO string from the timestamp
-    const walkData = {
-      userId: userProfile.id,
-      steps: activity.steps,
-      distance: activity.distance,
-      duration: activity.duration,
-      date: activityDateTime.toISOString() // Ensure proper ISO format
-    };
+    setIsLoading(true);
+    setError(null);
     
-    // Send to API
-    const response = await walkApi.create(walkData);
-    
-    if (response.success && response.data) {
-      // Convert API response to our format and add to state
-      const newActivity = apiWalkToWalkActivity(response.data);
+    try {
+      // CRITICAL FIX: Manually extract the correct date from the timestamp
+      // Parse the timestamp string to a Date object
+      const activityStartTime = new Date(activity.timestamp);
       
-      // Log for debugging
-      console.log('API returned activity with date:', response.data.date);
-      console.log('Converted to frontend activity with date:', newActivity.date);
+      // Extract date components directly from this Date object
+      const year = activityStartTime.getFullYear();
+      const month = String(activityStartTime.getMonth() + 1).padStart(2, '0');
+      const day = String(activityStartTime.getDate()).padStart(2, '0');
       
-      setActivities(prev => [...prev, newActivity]);
+      // Create a properly formatted date string YYYY-MM-DD
+      const activityDate = `${year}-${month}-${day}`;
       
-      // Also update localStorage as a backup
-      localStorage.setItem('walkActivities', JSON.stringify([...activities, newActivity]));
-    } else {
-      setError(response.error || 'Failed to add activity');
+      console.log('Activity timestamp:', activity.timestamp);
+      console.log('Extracted date for activity:', activityDate);
+      
+      // Prepare activity data for API - keep using the timestamp for API
+      const walkData = {
+        userId: userProfile.id,
+        steps: activity.steps,
+        distance: activity.distance,
+        duration: activity.duration,
+        date: activity.timestamp // Keep using timestamp for the API
+      };
+      
+      // Create a modified activity with the forced date
+      const modifiedActivity = {
+        ...activity,
+        date: activityDate // Force the correct date string
+      };
+      
+      // Send to API
+      const response = await walkApi.create(walkData);
+      
+      if (response.success && response.data) {
+        // Use our custom conversion with proper date handling instead of apiWalkToWalkActivity
+        const newActivity = {
+          id: response.data.id,
+          userId: response.data.userId,
+          steps: response.data.steps,
+          distance: response.data.distance,
+          duration: response.data.duration,
+          date: activityDate, // Use our carefully extracted date
+          timestamp: response.data.date // Keep the API's timestamp
+        } as WalkActivity;
+        
+        console.log('Adding activity with date:', activityDate);
+        
+        setActivities(prev => [...prev, newActivity]);
+        
+        // Also update localStorage as a backup
+        const updatedActivities = [...activities, newActivity];
+        localStorage.setItem('walkActivities', JSON.stringify(updatedActivities));
+      } else {
+        setError(response.error || 'Failed to add activity');
+        
+        // Fallback: Add to localStorage anyway
+        const newActivity = {
+          ...modifiedActivity, // Use the modified activity with corrected date
+          id: Date.now().toString(),
+          userId: userProfile.id
+        } as WalkActivity;
+        
+        setActivities(prev => [...prev, newActivity]);
+        
+        const updatedActivities = [...activities, newActivity];
+        localStorage.setItem('walkActivities', JSON.stringify(updatedActivities));
+      }
+    } catch (err) {
+      console.error('Error adding activity:', err);
+      setError('Failed to add activity. Please try again.');
+      
+      // Extract date again for the fallback
+      const fallbackDate = new Date(activity.timestamp);
+      const fallbackYear = fallbackDate.getFullYear();
+      const fallbackMonth = String(fallbackDate.getMonth() + 1).padStart(2, '0');
+      const fallbackDay = String(fallbackDate.getDate()).padStart(2, '0');
+      const fallbackDateStr = `${fallbackYear}-${fallbackMonth}-${fallbackDay}`;
       
       // Fallback: Add to localStorage anyway
       const newActivity = {
         ...activity,
         id: Date.now().toString(),
-        userId: userProfile.id
+        userId: userProfile.id,
+        date: fallbackDateStr // Ensure the date is correct even in fallback
       } as WalkActivity;
       
       setActivities(prev => [...prev, newActivity]);
-      localStorage.setItem('walkActivities', JSON.stringify([...activities, newActivity]));
+      
+      const updatedActivities = [...activities, newActivity];
+      localStorage.setItem('walkActivities', JSON.stringify(updatedActivities));
+    } finally {
+      setIsLoading(false);
     }
-  } catch (err) {
-    console.error('Error adding activity:', err);
-    setError('Failed to add activity. Please try again.');
-    
-    // Fallback: Add to localStorage anyway
-    const newActivity = {
-      ...activity,
-      id: Date.now().toString(),
-      userId: userProfile.id
-    } as WalkActivity;
-    
-    setActivities(prev => [...prev, newActivity]);
-    localStorage.setItem('walkActivities', JSON.stringify([...activities, newActivity]));
-  } finally {
-    setIsLoading(false);
-  }
-}, [activities, userProfile]);
+  }, [activities, userProfile]);
 
   // Function to create or update user profile - wrapped in useCallback
   const setUserProfile = useCallback(async (profile: UserProfile) => {
