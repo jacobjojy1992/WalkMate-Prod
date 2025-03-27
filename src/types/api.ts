@@ -40,7 +40,7 @@ export interface ApiWalk {
  * User profile with daily goal
  * Used in the application's context
  */
-export interface UserProfile {
+export interface ApiUserProfile {
   id?: string;
   name: string;
   dailyGoal: {

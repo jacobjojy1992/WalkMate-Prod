@@ -2,17 +2,17 @@
 'use client';
 
 import { createContext, useState, useContext, ReactNode, useEffect, useCallback } from 'react';
-import { UserProfile, WalkActivity, ApiUser, ApiWalk } from '@/types';
+import { ApiUserProfile, WalkActivity, ApiUser, ApiWalk } from '@/types';
 import { userApi, walkApi } from '@/services/api';
 
 // Define context type
 interface WalkContextType {
   activities: WalkActivity[];
-  userProfile: UserProfile | null;
+  userProfile: ApiUserProfile | null;
   isLoading: boolean;
   error: string | null;
   addActivity: (activity: Omit<WalkActivity, 'id' | 'userId'>) => Promise<void>;
-  setUserProfile: (profile: UserProfile) => Promise<void>;
+  setUserProfile: (profile: ApiUserProfile) => Promise<void>;
   fetchActivities: () => Promise<void>;
 }
 
@@ -28,7 +28,7 @@ const WalkContext = createContext<WalkContextType>({
 });
 
 // Helper functions to convert between frontend and backend data formats
-const apiUserToUserProfile = (apiUser: ApiUser): UserProfile => {
+const apiUserToUserProfile = (apiUser: ApiUser): ApiUserProfile => {
   return {
     id: apiUser.id,
     name: apiUser.name,
@@ -39,7 +39,7 @@ const apiUserToUserProfile = (apiUser: ApiUser): UserProfile => {
   };
 };
 
-const userProfileToApiUser = (profile: UserProfile): Partial<ApiUser> => {
+const userProfileToApiUser = (profile: ApiUserProfile): Partial<ApiUser> => {
   return {
     name: profile.name,
     goalType: profile.dailyGoal.type,
@@ -78,7 +78,7 @@ const apiWalkToWalkActivity = (apiWalk: ApiWalk): WalkActivity => {
 export function WalkProvider({ children }: { children: ReactNode }) {
   // State
   const [activities, setActivities] = useState<WalkActivity[]>([]);
-  const [userProfile, setUserProfileState] = useState<UserProfile | null>(null);
+  const [userProfile, setUserProfileState] = useState<ApiUserProfile | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -299,7 +299,7 @@ export function WalkProvider({ children }: { children: ReactNode }) {
   }, [activities, userProfile]);
 
   // Function to create or update user profile - wrapped in useCallback
-  const setUserProfile = useCallback(async (profile: UserProfile) => {
+  const setUserProfile = useCallback(async (profile: ApiUserProfile) => {
     setIsLoading(true);
     setError(null);
     
