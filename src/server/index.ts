@@ -1,4 +1,3 @@
-// src/server/index.ts
 import express from 'express';
 import cors from 'cors';
 import { PrismaClient } from '@prisma/client';
@@ -7,30 +6,74 @@ import walkRoutes from './routes/walkRoutes';
 
 // Initialize Express app
 const app = express();
-const port = process.env.PORT || 3001;
 
 // Initialize Prisma client
-export const prisma = new PrismaClient();
+let prisma: PrismaClient;
+
+// Type declaration for global variable to avoid TypeScript errors
+declare global {
+  // eslint-disable-next-line no-var
+  var prisma: PrismaClient | undefined;
+}
+
+// Production environment (Vercel serverless)
+if (process.env.NODE_ENV === 'production') {
+  prisma = new PrismaClient({
+    datasources: {
+      db: {
+        url: process.env.DATABASE_URL
+      }
+    }
+  });
+} else {
+  // For development, avoid creating a new connection for every file change
+  if (!global.prisma) {
+    global.prisma = new PrismaClient({
+      datasources: {
+        db: {
+          url: process.env.DATABASE_URL
+        }
+      }
+    });
+  }
+  prisma = global.prisma;
+}
+
+// Export the prisma client for use in other files
+export { prisma };
 
 // Middleware
-app.use(cors()); // Allows cross-origin requests (from frontend to backend)
+app.use(cors()); // Allows cross-origin requests
 app.use(express.json()); // Parses incoming JSON requests
 
-// Root route - This will handle requests to the root path
+// Root route
 app.get('/', (req, res) => {
   res.send('WalkMate API Server is running! Try accessing /api/health');
 });
 
-// Routes
-app.use('/api/users', userRoutes);
-app.use('/api/walks', walkRoutes);
+// Routes - Note the routes should be without the /api prefix since vercel.json adds it
+app.use('/users', userRoutes);
+app.use('/walks', walkRoutes);
 
-// Health check endpoint - useful for verifying the server is running
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', message: 'Server is running' });
+// Health check endpoint
+app.get('/health', async (req, res) => {
+  try {
+    // Simple database connection check
+    await prisma.$queryRaw`SELECT 1 as health_check`;
+    res.json({ 
+      status: 'ok', 
+      message: 'Server is running and connected to database' 
+    });
+  } catch (error) {
+    console.error('Health check failed:', error);
+    res.status(500).json({ 
+      status: 'error', 
+      message: 'Server is running but database connection failed' 
+    });
+  }
 });
 
-// Error handling middleware - catches any errors thrown in route handlers
+// Error handling middleware
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error(err.stack);
   res.status(500).json({
@@ -40,12 +83,6 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
   next(err);
 });
 
-// Start server
-if (process.env.NODE_ENV !== 'test') {
-  app.listen(port, () => {
-    console.log(`Server running on port ${port}`);
-  });
-}
-
-// Export for testing
+// Important: For serverless deployment, we don't call app.listen()
+// Instead, we export the Express app directly
 export default app;
