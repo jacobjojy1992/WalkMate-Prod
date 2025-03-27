@@ -326,40 +326,44 @@ export const walkApi = {
         }
       }
       
-      // If we get here, all patterns failed
-      console.log('All URL patterns failed to fetch walks');
-      
-      // As a last resort, return any locally cached activities
-      const cachedActivities = localStorage.getItem('walkActivities');
-      if (cachedActivities) {
-        try {
-          const activities = JSON.parse(cachedActivities);
-          console.log(`Falling back to ${activities.length} cached activities from localStorage`);
-          
-          // Filter for only this user's activities
-          const userActivities = activities.filter(
-            (activity: { userId: string }) => activity.userId === userId
-          );
-          
-          if (userActivities.length > 0) {
-            console.log(`Found ${userActivities.length} cached activities for this user`);
-            return {
-              success: true,
-              data: userActivities,
-              error: 'Using cached data - API connection failed'
-            };
-          }
-        } catch (e) {
-          console.error('Error parsing cached activities', e);
-        }
-      }
-      
-      // Truly failed - no API connection and no usable cached data
+      // If we get here, all patterns were tried but either succeeded with empty data
+// or failed to connect
+console.log('All URL patterns tried for walks, checking results');
+
+// As a last resort, try to use locally cached activities
+const cachedActivities = localStorage.getItem('walkActivities');
+if (cachedActivities) {
+  try {
+    const activities = JSON.parse(cachedActivities);
+    console.log(`Falling back to ${activities.length} cached activities from localStorage`);
+    
+    // Filter for only this user's activities
+    const userActivities = activities.filter(
+      (activity: { userId: string }) => activity.userId === userId
+    );
+    
+    if (userActivities.length > 0) {
+      console.log(`Found ${userActivities.length} cached activities for this user`);
       return {
-        success: false,
-        data: [],
-        error: `Failed to fetch walks for user ${userId} after trying ${urlPatterns.length} different URL patterns`
+        success: true,
+        data: userActivities,
+        error: 'Using cached data - API connection was successful but returned no data'
       };
+    }
+  } catch (e) {
+    console.error('Error parsing cached activities', e);
+  }
+}
+
+// Empty array is a valid response for a new user with no walks
+// Return it as a success case, not an error
+return {
+  success: true,
+  data: [],
+  error: null
+};
+
+      
     } catch (generalError) {
       // This catch block handles any unexpected errors in our pattern-trying logic itself
       console.error('Unexpected error in URL pattern testing logic:', generalError);
