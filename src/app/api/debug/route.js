@@ -1,4 +1,4 @@
-// api/debug/route.js
+// src/app/api/debug/route.js
 import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 

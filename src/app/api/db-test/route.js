@@ -1,11 +1,11 @@
-// api/db-test/route.js
+// src/app/api/db-test/route.js
 import { NextResponse } from 'next/server';
 
 export async function GET() {
-  // Import pg dynamically to avoid build issues
-  const { Pool } = await import('pg');
-  
   try {
+    // Import pg dynamically to avoid build issues
+    const { Pool } = await import('pg');
+    
     console.log('Testing direct database connection with pg...');
     
     // Get database URL and mask it for logging

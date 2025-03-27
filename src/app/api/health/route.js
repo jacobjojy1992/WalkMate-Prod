@@ -1,6 +1,6 @@
-// api/health/route.js
+// src/app/api/health/route.js
 import { NextResponse } from 'next/server';
-import prisma from '../../lib/prisma';
+import prisma from '../../../lib/prisma';
 
 export async function GET() {
   try {
@@ -19,6 +19,7 @@ export async function GET() {
       status: 'error',
       dbConnection: 'failed',
       error: error.message,
+      errorCode: error.code,
       environment: process.env.NODE_ENV,
       timestamp: new Date().toISOString()
     }, { status: 500 });
