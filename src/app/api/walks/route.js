@@ -28,10 +28,26 @@ export async function GET(request) {
     );
   }
 }
-
+// In your /api/walks/route.js
 export async function POST(request) {
   try {
     const data = await request.json();
+    console.log('Received walk data:', data);
+    
+    // Validate userId exists
+    const user = await prisma.user.findUnique({
+      where: { id: data.userId }
+    });
+    
+    if (!user) {
+      console.error(`User ID ${data.userId} not found in database`);
+      return NextResponse.json(
+        { error: `User ID ${data.userId} not found` },
+        { status: 404 }
+      );
+    }
+    
+    // Continue with walk creation
     const walk = await prisma.walk.create({
       data: {
         steps: data.steps,
@@ -41,6 +57,7 @@ export async function POST(request) {
         userId: data.userId,
       },
     });
+    
     return NextResponse.json(walk, { status: 201 });
   } catch (error) {
     console.error('Error creating walk:', error);
