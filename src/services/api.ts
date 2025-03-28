@@ -2,18 +2,10 @@
 import axios from 'axios';
 import { ApiResponse, ApiUser, ApiWalk } from '@/types';
 
-
 // Base URL for our API - will use environment variable in production
+// FIXED: Remove the trailing /api if it exists in the URL
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
-// A robust path join function that handles slashes properly
-const pathJoin = (...parts: string[]): string => {
-  // Make sure the result starts with a slash and doesn't have double slashes
-  return '/' + parts
-    .map(part => part.replace(/(^\/+|\/+$)/g, ''))
-    .filter(part => part.length)
-    .join('/');
-};
 
 // Define the API response structure for TypeScript
 interface BackendResponse<T> {
@@ -70,7 +62,8 @@ export const userApi = {
    */
   getAll: async (): Promise<ApiResponse<ApiUser[]>> => {
     try {
-      const fullUrl = `${API_URL}${pathJoin('api', 'users')}`;
+      // FIXED: Always use consistent API paths
+      const fullUrl = `${API_URL}/api/users`;
       console.log('Making API request to: GET', fullUrl);
       
       const response = await axios.get<BackendResponse<ApiUser[]>>(fullUrl);
@@ -98,7 +91,8 @@ export const userApi = {
    */
   getById: async (id: string): Promise<ApiResponse<ApiUser>> => {
     try {
-      const fullUrl = `${API_URL}${pathJoin('api', 'users', id)}`;
+      // FIXED: Use consistent API path construction
+      const fullUrl = `${API_URL}/api/users/${id}`;
       console.log('Making API request to: GET', fullUrl);
       
       const response = await axios.get<BackendResponse<ApiUser>>(fullUrl);
@@ -130,7 +124,8 @@ export const userApi = {
     goalValue: number 
   }): Promise<ApiResponse<ApiUser>> => {
     try {
-      const fullUrl = `${API_URL}${pathJoin('api', 'users')}`;
+      // FIXED: Use consistent API path construction
+      const fullUrl = `${API_URL}/api/users`;
       console.log('Making API request to: POST', fullUrl, userData);
       
       const response = await axios.post<BackendResponse<ApiUser>>(fullUrl, userData);
@@ -163,7 +158,8 @@ export const userApi = {
     goalValue?: number;
   }): Promise<ApiResponse<ApiUser>> => {
     try {
-      const fullUrl = `${API_URL}${pathJoin('api', 'users', id)}`;
+      // FIXED: Use consistent API path construction
+      const fullUrl = `${API_URL}/api/users/${id}`;
       console.log('Making API request to: PUT', fullUrl, userData);
       
       const response = await axios.put<BackendResponse<ApiUser>>(fullUrl, userData);
@@ -191,7 +187,8 @@ export const userApi = {
    */
   getUserStreak: async (id: string): Promise<ApiResponse<{streak: number}>> => {
     try {
-      const fullUrl = `${API_URL}${pathJoin('api', 'users', id, 'streak')}`;
+      // FIXED: Use consistent API path construction
+      const fullUrl = `${API_URL}/api/users/${id}/streak`;
       console.log('Making API request to: GET', fullUrl);
       
       const response = await axios.get<BackendResponse<{streak: number}>>(fullUrl);
@@ -220,7 +217,8 @@ export const userApi = {
    */
   getWeeklyReport: async (id: string, date?: string): Promise<ApiResponse<Record<string, unknown>>> => {
     try {
-      const baseUrl = `${API_URL}${pathJoin('api', 'users', id, 'weekly-report')}`;
+      // FIXED: Use consistent API path construction
+      const baseUrl = `${API_URL}/api/users/${id}/weekly-report`;
       const fullUrl = date ? `${baseUrl}?date=${date}` : baseUrl;
       
       console.log('Making API request to: GET', fullUrl);
@@ -252,15 +250,13 @@ export const walkApi = {
    */
   getAllForUser: async (userId: string): Promise<ApiResponse<ApiWalk[]>> => {
     try {
-      // Define all possible URL patterns that might match your backend routes
+      // FIXED: Define all possible URL patterns with correct API paths
       const urlPatterns = [
-        `${API_URL}/api/walks/user/${userId}`,       // Pattern 1: Standard pattern from original code
-        `${API_URL}/api/users/${userId}/walks`,      // Pattern 2: RESTful pattern alternative
-        `${API_URL}/walks/user/${userId}`,           // Pattern 3: Without api prefix (pattern 1)
-        `${API_URL}/users/${userId}/walks`,          // Pattern 4: Without api prefix (pattern 2)
-        `${API_URL}/api/user/${userId}/walks`,       // Pattern 5: Singular "user" instead of "users"
-        `${API_URL}/api/walks?userId=${userId}`,     // Pattern 6: Query parameter approach
-        `${API_URL}/api/users/${userId}/activities`  // Pattern 7: Different endpoint name
+        `${API_URL}/api/walks?userId=${userId}`,     // Pattern 1: Query parameter approach (most likely)
+        `${API_URL}/api/walks/user/${userId}`,       // Pattern 2: User-specific endpoint 
+        `${API_URL}/api/users/${userId}/walks`,      // Pattern 3: RESTful pattern
+        `${API_URL}/api/user/${userId}/walks`,       // Pattern 4: Singular "user" instead of "users"
+        `${API_URL}/api/users/${userId}/activities`  // Pattern 5: Different endpoint name
       ];
       
       console.log(`Attempting to fetch walks for user ${userId} using multiple URL patterns`);
@@ -327,43 +323,41 @@ export const walkApi = {
       }
       
       // If we get here, all patterns were tried but either succeeded with empty data
-// or failed to connect
-console.log('All URL patterns tried for walks, checking results');
+      // or failed to connect
+      console.log('All URL patterns tried for walks, checking results');
 
-// As a last resort, try to use locally cached activities
-const cachedActivities = localStorage.getItem('walkActivities');
-if (cachedActivities) {
-  try {
-    const activities = JSON.parse(cachedActivities);
-    console.log(`Falling back to ${activities.length} cached activities from localStorage`);
-    
-    // Filter for only this user's activities
-    const userActivities = activities.filter(
-      (activity: { userId: string }) => activity.userId === userId
-    );
-    
-    if (userActivities.length > 0) {
-      console.log(`Found ${userActivities.length} cached activities for this user`);
+      // As a last resort, try to use locally cached activities
+      const cachedActivities = localStorage.getItem('walkActivities');
+      if (cachedActivities) {
+        try {
+          const activities = JSON.parse(cachedActivities);
+          console.log(`Falling back to ${activities.length} cached activities from localStorage`);
+          
+          // Filter for only this user's activities
+          const userActivities = activities.filter(
+            (activity: { userId: string }) => activity.userId === userId
+          );
+          
+          if (userActivities.length > 0) {
+            console.log(`Found ${userActivities.length} cached activities for this user`);
+            return {
+              success: true,
+              data: userActivities,
+              error: 'Using cached data - API connection was successful but returned no data'
+            };
+          }
+        } catch (e) {
+          console.error('Error parsing cached activities', e);
+        }
+      }
+
+      // Empty array is a valid response for a new user with no walks
+      // Return it as a success case, not an error
       return {
         success: true,
-        data: userActivities,
-        error: 'Using cached data - API connection was successful but returned no data'
+        data: [],
+        error: null
       };
-    }
-  } catch (e) {
-    console.error('Error parsing cached activities', e);
-  }
-}
-
-// Empty array is a valid response for a new user with no walks
-// Return it as a success case, not an error
-return {
-  success: true,
-  data: [],
-  error: null
-};
-
-      
     } catch (generalError) {
       // This catch block handles any unexpected errors in our pattern-trying logic itself
       console.error('Unexpected error in URL pattern testing logic:', generalError);
@@ -388,9 +382,9 @@ return {
    */
   getWalksByDate: async (userId: string, date: string): Promise<ApiResponse<ApiWalk[]>> => {
     try {
-      // Try both possible URL patterns
-      const url1 = `${API_URL}${pathJoin('api', 'walks', 'user', userId, 'date', date)}`;
-      const url2 = `${API_URL}${pathJoin('api', 'users', userId, 'walks', 'date', date)}`;
+      // FIXED: Use consistent API path construction
+      const url1 = `${API_URL}/api/walks/user/${userId}/date/${date}`;
+      const url2 = `${API_URL}/api/users/${userId}/walks/date/${date}`;
       
       console.log('Making API request to: GET', url1);
       try {
@@ -439,7 +433,8 @@ return {
     date: string;
   }): Promise<ApiResponse<ApiWalk>> => {
     try {
-      const fullUrl = `${API_URL}${pathJoin('api', 'walks')}`;
+      // FIXED: Use consistent API path construction
+      const fullUrl = `${API_URL}/api/walks`;
       console.log('Making API request to: POST', fullUrl, walkData);
       
       const response = await axios.post<BackendResponse<ApiWalk>>(fullUrl, walkData);
@@ -467,7 +462,8 @@ return {
    */
   deleteWalk: async (id: string): Promise<ApiResponse<{message: string}>> => {
     try {
-      const fullUrl = `${API_URL}${pathJoin('api', 'walks', id)}`;
+      // FIXED: Use consistent API path construction
+      const fullUrl = `${API_URL}/api/walks/${id}`;
       console.log('Making API request to: DELETE', fullUrl);
       
       const response = await axios.delete<BackendResponse<{message: string}>>(fullUrl);
@@ -496,7 +492,8 @@ return {
    */
   getStats: async (userId: string, period?: string): Promise<ApiResponse<Record<string, unknown>>> => {
     try {
-      const baseUrl = `${API_URL}${pathJoin('api', 'walks', 'user', userId, 'stats')}`;
+      // FIXED: Use consistent API path construction
+      const baseUrl = `${API_URL}/api/walks/user/${userId}/stats`;
       const fullUrl = period ? `${baseUrl}?period=${period}` : baseUrl;
       
       console.log('Making API request to: GET', fullUrl);
@@ -522,7 +519,8 @@ return {
 // Health check - useful for checking if the API is available
 export const healthCheck = async (): Promise<ApiResponse<{status: string}>> => {
   try {
-    const fullUrl = `${API_URL}${pathJoin('api', 'health')}`;
+    // FIXED: Use consistent API path construction
+    const fullUrl = `${API_URL}/api/health`;
     console.log('Making API request to: GET', fullUrl);
     
     const response = await axios.get<{status: string}>(fullUrl);
