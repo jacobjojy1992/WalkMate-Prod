@@ -235,6 +235,9 @@ export function WalkProvider({ children }: { children: ReactNode }) {
       
       // Send to API
       const response = await walkApi.create(walkData);
+      console.log('API create response:', response); // Log the entire response
+      console.log('Response success:', response.success);
+      console.log('Response data exists:', !!response.data);
       
       if (response.success && response.data) {
         // Use our custom conversion with proper date handling instead of apiWalkToWalkActivity
