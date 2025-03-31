@@ -15,8 +15,10 @@ export default function ActivityLogForm() {
   const [steps, setSteps] = useState(0);
   const [distance, setDistance] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]); // Today's date in YYYY-MM-DD format
-  const [formSubmitting, setFormSubmitting] = useState(false);
+  const [date, setDate] = useState(() => {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  });  const [formSubmitting, setFormSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   
   // Network and server availability states
