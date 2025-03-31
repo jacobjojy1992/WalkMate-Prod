@@ -81,46 +81,81 @@ export function WalkProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Function to ensure a user exists in the database
-  const ensureUserExists = async () => {
-    // Check if we've completed first-time setup
-    const setupComplete = localStorage.getItem('walkmateSetupComplete');
+  /**
+ * Ensures a user exists in the database and localStorage
+ * This function will:
+ * 1. Check if a user ID exists in localStorage
+ * 2. If it exists, verify the user exists in the database
+ * 3. If not found in the database, create a new user
+ * 4. Save the user ID to localStorage for future use
+ * @returns The user ID (string) or null if creation failed
+ */
+const ensureUserExists = async (): Promise<string | null> => {
+  try {
+    // Check if we have a userId in localStorage
+    const storedUserId = localStorage.getItem('currentUserId');
     
-    if (!setupComplete) {
+    // If we have a stored ID, try to verify it exists in the database
+    if (storedUserId) {
+      console.log('Found existing user ID in localStorage:', storedUserId);
+      
       try {
-        // Create a new user
-        const createResponse = await userApi.create({
-          name: 'Device User',
-          goalType: 'steps',
-          goalValue: 10000
-        });
+        // Try to fetch the existing user
+        const userResponse = await userApi.getById(storedUserId);
         
-        if (createResponse.success && createResponse.data) {
-          // Save the user ID to localStorage
-          const userId = createResponse.data.id;
-          localStorage.setItem('currentUserId', userId);
-          
-          // Convert and save profile
-          const profile = apiUserToUserProfile(createResponse.data);
-          localStorage.setItem('walkmateUserProfile', JSON.stringify(profile));
-          
-          // Mark setup as complete
-          localStorage.setItem('walkmateSetupComplete', 'true');
-          
-          console.log('First-time setup complete, created user:', userId);
-          return userId;
+        if (userResponse.success && userResponse.data) {
+          console.log('User exists in database, using ID:', storedUserId);
+          return storedUserId;
+        } else {
+          console.log('User ID from localStorage not found in database');
         }
       } catch (error) {
-        console.error('Error during first-time setup:', error);
+        console.error('Error verifying existing user:', error);
       }
     }
     
-    // Return existing user ID if setup already complete
-    return localStorage.getItem('currentUserId');
-  };
-
+    // No valid user ID in localStorage or user not found in database
+    // Create a new user
+    console.log('Creating new user in database');
+    try {
+      const createResponse = await userApi.create({
+        name: 'Device User',
+        goalType: 'steps',
+        goalValue: 10000
+      });
+      
+      if (createResponse.success && createResponse.data) {
+        const newUserId = createResponse.data.id;
+        console.log('Created new user with ID:', newUserId);
+        
+        // Save the server-generated ID to localStorage
+        localStorage.setItem('currentUserId', newUserId);
+        
+        // Save the full profile
+        const newProfile = apiUserToUserProfile(createResponse.data);
+        localStorage.setItem('walkmateUserProfile', JSON.stringify(newProfile));
+        
+        // Mark setup as complete
+        localStorage.setItem('walkmateSetupComplete', 'true');
+        
+        return newUserId;
+      } else {
+        console.error('Failed to create user:', createResponse.error);
+      }
+    } catch (createError) {
+      console.error('Error creating new user:', createError);
+    }
+    
+    // If we get here, we couldn't verify or create a user
+    return null;
+  } catch (error) {
+    console.error('Unexpected error in ensureUserExists:', error);
+    return null;
+  }
+};
   // Function to fetch activities for a specific user - wrapped in useCallback
   const fetchActivitiesForUser = useCallback(async (userId: string) => {
+    console.log('Fetching activities for user ID:', userId);
     try {
       const response = await walkApi.getAllForUser(userId);
       
@@ -149,6 +184,27 @@ export function WalkProvider({ children }: { children: ReactNode }) {
       }
     } catch (err) {
       console.error('Error fetching activities:', err);
+  
+      // Add enhanced error details logging
+      if (err && typeof err === 'object') {
+        // Safe type checking for Axios errors
+        const error = err as any; // Use any temporarily for type checking
+        
+        if (error.response) {
+          // This is likely an Axios error with response data
+          console.error('Response status:', error.response.status);
+          console.error('Response data:', error.response.data);
+        }
+        
+        if ('message' in error) {
+          console.error('Error message:', error.message);
+        }
+        
+        if ('code' in error) {
+          console.error('Error code:', error.code);
+        }
+      }
+      
       setError('Failed to fetch activities');
       
       // Fall back to localStorage data
