@@ -1,4 +1,3 @@
-// src/app/page.tsx
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -9,6 +8,7 @@ import StatsPanel from '@/components/StatsPanel';
 import ActivityLogForm from '@/components/ActivityLogForm';
 import CalendarView from '@/components/CalendarView';
 import RecentActivity from '@/components/RecentActivity';
+import DebugPanel from '@/components/DebugPanel';
 
 export default function Home() {
   const { userProfile } = useWalkContext();
@@ -84,6 +84,9 @@ export default function Home() {
           <RecentActivity />
         </>
       )}
+      
+      {/* Add Debug Panel - only visible in development environment */}
+      {process.env.NODE_ENV === 'development' && <DebugPanel />}
     </main>
   );
 }

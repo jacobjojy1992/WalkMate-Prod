@@ -13,6 +13,7 @@ interface WalkContextType {
   addActivity: (activity: Omit<WalkActivity, 'id' | 'userId'>) => Promise<void>;
   setUserProfile: (profile: ApiUserProfile) => Promise<void>;
   fetchActivities: () => Promise<void>;
+  debugDataAssociations?: () => Promise<void>; // Optional debug function
 }
 
 // Create context with default values
@@ -29,7 +30,7 @@ const WalkContext = createContext<WalkContextType>({
 // Helper functions to convert between frontend and backend data formats
 const apiUserToUserProfile = (apiUser: ApiUser): ApiUserProfile => {
   return {
-    id: apiUser.id,
+    id: apiUser.id.toString(), // Ensure string format
     name: apiUser.name,
     dailyGoal: {
       type: apiUser.goalType as 'steps' | 'distance',
@@ -63,8 +64,8 @@ const apiWalkToWalkActivity = (apiWalk: ApiWalk): WalkActivity => {
   console.log('To activity date:', dateStr);
   
   return {
-    id: apiWalk.id,
-    userId: apiWalk.userId,
+    id: apiWalk.id.toString(), // Ensure string format
+    userId: apiWalk.userId.toString(), // Ensure string format
     steps: apiWalk.steps,
     distance: apiWalk.distance,
     duration: apiWalk.duration,
@@ -72,6 +73,16 @@ const apiWalkToWalkActivity = (apiWalk: ApiWalk): WalkActivity => {
     timestamp: apiWalk.date // Keep the full ISO string for timestamp
   };
 };
+
+// Define a more specific error type to avoid using 'any'
+interface ErrorWithResponse {
+  response?: {
+    status?: number;
+    data?: unknown;
+  };
+  message?: string;
+  code?: string;
+}
 
 // Provider component
 export function WalkProvider({ children }: { children: ReactNode }) {
@@ -82,164 +93,216 @@ export function WalkProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
 
   /**
- * Ensures a user exists in the database and localStorage
- * This function will:
- * 1. Check if a user ID exists in localStorage
- * 2. If it exists, verify the user exists in the database
- * 3. If not found in the database, create a new user
- * 4. Save the user ID to localStorage for future use
- * @returns The user ID (string) or null if creation failed
- */
-const ensureUserExists = async (): Promise<string | null> => {
-  try {
-    // Check if we have a userId in localStorage
-    const storedUserId = localStorage.getItem('currentUserId');
-    
-    // If we have a stored ID, try to verify it exists in the database
-    if (storedUserId) {
-      console.log('Found existing user ID in localStorage:', storedUserId);
-      
-      try {
-        // Try to fetch the existing user
-        const userResponse = await userApi.getById(storedUserId);
-        
-        if (userResponse.success && userResponse.data) {
-          console.log('User exists in database, using ID:', storedUserId);
-          return storedUserId;
-        } else {
-          console.log('User ID from localStorage not found in database');
-        }
-      } catch (error) {
-        console.error('Error verifying existing user:', error);
-      }
-    }
-    
-    // No valid user ID in localStorage or user not found in database
-    // Create a new user
-    console.log('Creating new user in database');
+   * Ensures a user exists in the database and localStorage
+   * This function will:
+   * 1. Check if a user ID exists in localStorage
+   * 2. If it exists, verify the user exists in the database
+   * 3. If not found in the database, create a new user
+   * 4. Save the user ID to localStorage for future use
+   * @returns The user ID (string) or null if creation failed
+   */
+  const ensureUserExists = async (): Promise<string | null> => {
+    console.group('ensureUserExists');
     try {
-      const createResponse = await userApi.create({
-        name: 'Device User',
-        goalType: 'steps',
-        goalValue: 10000
-      });
+      // Check if we have a userId in localStorage
+      const storedUserId = localStorage.getItem('currentUserId');
       
-      if (createResponse.success && createResponse.data) {
-        const newUserId = createResponse.data.id;
-        console.log('Created new user with ID:', newUserId);
-        
-        // Save the server-generated ID to localStorage
-        localStorage.setItem('currentUserId', newUserId);
-        
-        // Save the full profile
-        const newProfile = apiUserToUserProfile(createResponse.data);
-        localStorage.setItem('walkmateUserProfile', JSON.stringify(newProfile));
-        
-        // Mark setup as complete
-        localStorage.setItem('walkmateSetupComplete', 'true');
-        
-        return newUserId;
-      } else {
-        console.error('Failed to create user:', createResponse.error);
+      console.log('Found stored user ID:', storedUserId);
+      
+      if (storedUserId) {
+        try {
+          // Verify user exists in database
+          console.log('Verifying user exists in database...');
+          const userResponse = await userApi.getById(storedUserId);
+          
+          console.log('User verification response:', userResponse);
+          
+          if (userResponse.success) {
+            // CRITICAL: Ensure we have the complete user object with proper ID format
+            if (userResponse.data && userResponse.data.id) {
+              // Use ID directly from the database response
+              const confirmedId = userResponse.data.id.toString();
+              
+              console.log('User exists in database with ID:', confirmedId);
+              
+              // Update localStorage to ensure exact format match
+              if (confirmedId !== storedUserId) {
+                console.log('Updating stored ID to match database format', confirmedId);
+                localStorage.setItem('currentUserId', confirmedId);
+              }
+              
+              return confirmedId;
+            }
+          }
+          
+          console.log('User not found in database despite having ID in localStorage');
+        } catch (error) {
+          console.error('Error verifying existing user:', error);
+        }
       }
-    } catch (createError) {
-      console.error('Error creating new user:', createError);
+      
+      console.log('Creating new user in database');
+      try {
+        const createResponse = await userApi.create({
+          name: 'Device User',
+          goalType: 'steps',
+          goalValue: 10000
+        });
+        
+        console.log('Create user response:', createResponse);
+        
+        // CRITICAL FIX: Carefully extract the ID from the response
+        if (createResponse.success && createResponse.data) {
+          // Some APIs nest data within another 'data' property
+          const userData = createResponse.data;
+          
+          // Ensure we have an ID
+          if (!userData.id) {
+            console.error('API returned success but no user ID!', userData);
+            return null;
+          }
+          
+          const newUserId = userData.id.toString(); // Ensure string format
+          console.log('Created new user with ID:', newUserId);
+          
+          // Save the ID immediately
+          localStorage.setItem('currentUserId', newUserId);
+          
+          // Create and save the profile
+          const newProfile = {
+            id: newUserId,
+            name: userData.name || 'Device User',
+            dailyGoal: {
+              type: userData.goalType || 'steps',
+              value: userData.goalValue || 10000
+            }
+          };
+          
+          localStorage.setItem('walkmateUserProfile', JSON.stringify(newProfile));
+          
+          return newUserId;
+        } else {
+          console.error('Failed to create user:', createResponse.error);
+        }
+      } catch (createError) {
+        console.error('Error creating new user:', createError);
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Unexpected error in ensureUserExists:', error);
+      return null;
+    } finally {
+      console.groupEnd();
+    }
+  };
+
+  // Helper function to log error details without using 'any'
+  const logErrorDetails = (err: unknown): void => {
+    if (!err || typeof err !== 'object') return;
+    
+    const error = err as ErrorWithResponse;
+    
+    if (error.response) {
+      console.error('Response status:', error.response.status);
+      console.error('Response data:', error.response.data);
     }
     
-    // If we get here, we couldn't verify or create a user
-    return null;
-  } catch (error) {
-    console.error('Unexpected error in ensureUserExists:', error);
-    return null;
-  }
-};
+    if ('message' in error) {
+      console.error('Error message:', error.message);
+    }
+    
+    if ('code' in error) {
+      console.error('Error code:', error.code);
+    }
+  };
+
   // Function to fetch activities for a specific user - wrapped in useCallback
   const fetchActivitiesForUser = useCallback(async (userId: string) => {
+    console.group(`fetchActivitiesForUser(${userId})`);
     console.log('Fetching activities for user ID:', userId);
+    
     try {
-      const response = await walkApi.getAllForUser(userId);
+      // Ensure userId is in string format
+      const formattedUserId = userId.toString();
       
-      if (response.success && response.data && response.data.length > 0) {
-        // Convert API walks to our app's activity format
-        const convertedActivities = response.data.map(apiWalkToWalkActivity);
-        setActivities(convertedActivities);
+      console.log('Making API request to get activities');
+      const response = await walkApi.getAllForUser(formattedUserId);
+      console.log('API response:', response);
+      
+      if (response.success && Array.isArray(response.data)) {
+        console.log(`Found ${response.data.length} activities in database`);
         
-        // Also update localStorage with the latest data
-        localStorage.setItem('walkActivities', JSON.stringify(convertedActivities));
+        if (response.data.length > 0) {
+          const convertedActivities = response.data.map(apiWalkToWalkActivity);
+          console.log('Converted activities:', convertedActivities);
+          
+          setActivities(convertedActivities);
+          localStorage.setItem('walkActivities', JSON.stringify(convertedActivities));
+          
+          console.groupEnd();
+          return;
+        }
+        
+        console.log('No activities found in database');
       } else {
-        console.warn('No activities data received from API', response);
-        
-        // Try to use localStorage data
-        const savedActivities = localStorage.getItem('walkActivities');
-        if (savedActivities) {
-          try {
-            const localActivities = JSON.parse(savedActivities);
-            // Filter for just this user's activities
-            const userActivities = localActivities.filter((act: WalkActivity) => act.userId === userId);
-            setActivities(userActivities);
-          } catch (e) {
-            console.error('Error parsing localStorage activities', e);
-          }
+        console.warn('Unexpected API response structure:', response);
+      }
+      
+      // Try localStorage fallback
+      const savedActivities = localStorage.getItem('walkActivities');
+      console.log('Checking localStorage for activities:', savedActivities ? 'Found' : 'Not found');
+      
+      if (savedActivities) {
+        try {
+          const parsed = JSON.parse(savedActivities);
+          console.log('Parsed localStorage activities:', parsed);
+          
+          // Ensure we only use activities for this user
+          const userActivities = Array.isArray(parsed) 
+            ? parsed.filter(act => act.userId === formattedUserId)
+            : [];
+            
+          console.log(`Found ${userActivities.length} activities for user in localStorage`);
+          setActivities(userActivities);
+        } catch (parseError) {
+          console.error('Error parsing localStorage activities:', parseError);
         }
       }
     } catch (err) {
       console.error('Error fetching activities:', err);
-  
-      // Add enhanced error details logging
-      if (err && typeof err === 'object') {
-        // Safe type checking for Axios errors
-        interface ErrorWithResponse {
-          response?: {
-            status?: number;
-            data?: unknown;
-          };
-          message?: string;
-          code?: string;
-        }
-        
-        const error = err as ErrorWithResponse; // Use any temporarily for type checking
-        
-        if (error.response) {
-          // This is likely an Axios error with response data
-          console.error('Response status:', error.response.status);
-          console.error('Response data:', error.response.data);
-        }
-        
-        if ('message' in error) {
-          console.error('Error message:', error.message);
-        }
-        
-        if ('code' in error) {
-          console.error('Error code:', error.code);
-        }
-      }
-      
+      logErrorDetails(err);
       setError('Failed to fetch activities');
       
-      // Fall back to localStorage data
+      // Try localStorage fallback
       const savedActivities = localStorage.getItem('walkActivities');
       if (savedActivities) {
         try {
-          const localActivities = JSON.parse(savedActivities);
-          // Filter for just this user's activities
-          const userActivities = localActivities.filter((act: WalkActivity) => act.userId === userId);
+          const parsed = JSON.parse(savedActivities);
+          const userActivities = Array.isArray(parsed)
+            ? parsed.filter(act => act.userId === userId)
+            : [];
           setActivities(userActivities);
         } catch (e) {
           console.error('Error parsing localStorage activities', e);
         }
       }
+    } finally {
+      console.groupEnd();
     }
   }, []);
 
   // Initialize data on component mount
   useEffect(() => {
     const initializeData = async () => {
+      console.group('initializeData');
       setIsLoading(true);
       setError(null);
       
       try {
         // Ensure a user exists in the database
         const userId = await ensureUserExists();
+        console.log('User exists with ID:', userId);
         
         if (userId) {
           // Try to fetch user from API
@@ -272,6 +335,7 @@ const ensureUserExists = async (): Promise<string | null> => {
             }
           } catch (err) {
             console.error('Error fetching user:', err);
+            logErrorDetails(err);
             
             // Fall back to localStorage data
             const savedProfile = localStorage.getItem('walkmateUserProfile');
@@ -296,21 +360,31 @@ const ensureUserExists = async (): Promise<string | null> => {
         }
       } catch (err) {
         console.error('Error during initialization:', err);
+        logErrorDetails(err);
         setError('Failed to initialize app data');
       } finally {
         setIsLoading(false);
+        console.groupEnd();
       }
     };
     
     initializeData();
   }, [fetchActivitiesForUser]);
 
-  // UPDATED: Enhanced activity creation with improved date handling
+  // UPDATED: Enhanced activity creation with improved date handling and ID consistency
   const addActivity = useCallback(async (activity: Omit<WalkActivity, 'id' | 'userId'>) => {
+    console.group('addActivity');
+    console.log('Activity data:', activity);
+    
     if (!userProfile?.id) {
+      console.error('Cannot add activity: No user profile found');
       setError('Cannot add activity: No user profile found');
+      console.groupEnd();
       return;
     }
+    
+    // CRITICAL: Ensure userId is in the exact same format
+    const userId = userProfile.id.toString();
     
     setIsLoading(true);
     setError(null);
@@ -333,101 +407,94 @@ const ensureUserExists = async (): Promise<string | null> => {
       
       // Prepare activity data for API - keep using the timestamp for API
       const walkData = {
-        userId: userProfile.id,
+        userId: userId, // Explicitly use the string format
         steps: activity.steps,
         distance: activity.distance,
         duration: activity.duration,
         date: activity.timestamp // Keep using timestamp for the API
       };
       
-      // Create a modified activity with the forced date
-      const modifiedActivity = {
-        ...activity,
-        date: activityDate // Force the correct date string
-      };
+      console.log('Sending to API:', walkData);
       
-      // Send to API
+      // Add to localStorage immediately as a backup
+      const tempId = `temp_${Date.now()}`;
+      const tempActivity = {
+        ...activity,
+        id: tempId,
+        userId: userId,
+        date: activityDate
+      } as WalkActivity;
+      
+      // Update state optimistically
+      setActivities(prev => [...prev, tempActivity]);
+      
+      // Store in localStorage
+      const updatedActivities = [...activities, tempActivity];
+      localStorage.setItem('walkActivities', JSON.stringify(updatedActivities));
+      
+      // Now send to API
       const response = await walkApi.create(walkData);
-      console.log('API create response:', response); // Log the entire response
-      console.log('Response success:', response.success);
-      console.log('Response data exists:', !!response.data);
+      console.log('API create response:', response);
       
       if (response.success && response.data) {
-        // Use our custom conversion with proper date handling instead of apiWalkToWalkActivity
-        const newActivity = {
-          id: response.data.id,
-          userId: response.data.userId,
-          steps: response.data.steps,
-          distance: response.data.distance,
-          duration: response.data.duration,
-          date: activityDate, // Use our carefully extracted date
-          timestamp: response.data.date // Keep the API's timestamp
+        // Some APIs nest data within another 'data' property
+        const responseData = response.data;
+        
+        // Replace the temp activity with the real one from server
+        const serverActivity = {
+          id: responseData.id.toString(),
+          userId: responseData.userId.toString(),
+          steps: responseData.steps,
+          distance: responseData.distance,
+          duration: responseData.duration,
+          date: activityDate,
+          timestamp: responseData.date
         } as WalkActivity;
         
-        console.log('Adding activity with date:', activityDate);
+        console.log('Replacing temp activity with server activity:', serverActivity);
         
-        setActivities(prev => [...prev, newActivity]);
+        setActivities(prev => 
+          prev.map(act => act.id === tempId ? serverActivity : act)
+        );
         
-        // Also update localStorage as a backup
-        const updatedActivities = [...activities, newActivity];
-        localStorage.setItem('walkActivities', JSON.stringify(updatedActivities));
+        // Update localStorage
+        const finalActivities = activities.map(act => 
+          act.id === tempId ? serverActivity : act
+        );
+        localStorage.setItem('walkActivities', JSON.stringify(finalActivities));
       } else {
-        setError(response.error || 'Failed to add activity');
-        
-        // Fallback: Add to localStorage anyway
-        const newActivity = {
-          ...modifiedActivity, // Use the modified activity with corrected date
-          id: Date.now().toString(),
-          userId: userProfile.id
-        } as WalkActivity;
-        
-        setActivities(prev => [...prev, newActivity]);
-        
-        const updatedActivities = [...activities, newActivity];
-        localStorage.setItem('walkActivities', JSON.stringify(updatedActivities));
+        console.warn('API error or unsuccessful response', response);
+        setError(response.error || 'Failed to save activity to server');
+        // Keep the temporary activity in place
       }
     } catch (err) {
       console.error('Error adding activity:', err);
-      setError('Failed to add activity. Please try again.');
-      
-      // Extract date again for the fallback
-      const fallbackDate = new Date(activity.timestamp);
-      const fallbackYear = fallbackDate.getFullYear();
-      const fallbackMonth = String(fallbackDate.getMonth() + 1).padStart(2, '0');
-      const fallbackDay = String(fallbackDate.getDate()).padStart(2, '0');
-      const fallbackDateStr = `${fallbackYear}-${fallbackMonth}-${fallbackDay}`;
-      
-      // Fallback: Add to localStorage anyway
-      const newActivity = {
-        ...activity,
-        id: Date.now().toString(),
-        userId: userProfile.id,
-        date: fallbackDateStr // Ensure the date is correct even in fallback
-      } as WalkActivity;
-      
-      setActivities(prev => [...prev, newActivity]);
-      
-      const updatedActivities = [...activities, newActivity];
-      localStorage.setItem('walkActivities', JSON.stringify(updatedActivities));
+      logErrorDetails(err);
+      setError('Failed to add activity. Data saved locally only.');
+      // The optimistic update remains in place
     } finally {
       setIsLoading(false);
+      console.groupEnd();
     }
   }, [activities, userProfile]);
 
   // Function to create or update user profile - wrapped in useCallback
   const setUserProfile = useCallback(async (profile: ApiUserProfile) => {
+    console.group('setUserProfile');
     setIsLoading(true);
     setError(null);
     
     try {
       let response;
-      const userId = profile.id;
+      const userId = profile.id ? profile.id.toString() : null;
       
       if (userId) {
         // Update existing user
+        console.log('Updating existing user:', userId);
         response = await userApi.update(userId, userProfileToApiUser(profile));
       } else {
         // Create new user
+        console.log('Creating new user');
         response = await userApi.create({
           name: profile.name,
           goalType: profile.dailyGoal.type,
@@ -435,20 +502,22 @@ const ensureUserExists = async (): Promise<string | null> => {
         });
       }
       
+      console.log('User API response:', response);
+      
       if (response.success && response.data) {
         // Convert API user to our format
         const updatedProfile = apiUserToUserProfile(response.data);
         setUserProfileState(updatedProfile);
         
         // Save user ID to localStorage for persistent sessions
-        localStorage.setItem('currentUserId', response.data.id);
+        localStorage.setItem('currentUserId', response.data.id.toString());
         
         // Also save profile to localStorage as backup
         localStorage.setItem('walkmateUserProfile', JSON.stringify(updatedProfile));
         
         // If this is a new user, fetch their activities (which should be empty)
         if (!userId && response.data.id) {
-          await fetchActivitiesForUser(response.data.id);
+          await fetchActivitiesForUser(response.data.id.toString());
         }
       } else {
         setError(response.error || 'Failed to update profile');
@@ -469,6 +538,7 @@ const ensureUserExists = async (): Promise<string | null> => {
       }
     } catch (err) {
       console.error('Error updating profile:', err);
+      logErrorDetails(err);
       setError('Failed to update profile. Please try again.');
       
       // Fallback: Update in localStorage anyway
@@ -485,19 +555,26 @@ const ensureUserExists = async (): Promise<string | null> => {
       }
     } finally {
       setIsLoading(false);
+      console.groupEnd();
     }
   }, [fetchActivitiesForUser]);
 
   // Function to fetch all activities - wrapped in useCallback
   const fetchActivities = useCallback(async () => {
+    console.group('fetchActivities');
+    
     if (!userProfile?.id) {
       // No user profile, can't fetch activities
+      console.error('Cannot fetch activities: No user profile found');
       setError('Cannot fetch activities: No user profile found');
+      console.groupEnd();
       return;
     }
     
     if (isLoading) {
       // Already loading, prevent duplicate requests
+      console.log('Already loading, skipping duplicate request');
+      console.groupEnd();
       return;
     }
     
@@ -505,14 +582,48 @@ const ensureUserExists = async (): Promise<string | null> => {
     setError(null);
     
     try {
-      await fetchActivitiesForUser(userProfile.id);
+      await fetchActivitiesForUser(userProfile.id.toString());
     } catch (err) {
       console.error('Error fetching activities:', err);
+      logErrorDetails(err);
       setError('Failed to fetch activities');
     } finally {
       setIsLoading(false);
+      console.groupEnd();
     }
   }, [userProfile, isLoading, fetchActivitiesForUser]);
+  
+  // Debug function to help diagnose data associations
+  const debugDataAssociations = async () => {
+    console.group('DEBUG: Data Associations');
+    const userId = localStorage.getItem('currentUserId');
+    console.log('Current localStorage userId:', userId);
+    
+    if (userId) {
+      try {
+        // Get user from database
+        const userResponse = await userApi.getById(userId);
+        console.log('User in database:', userResponse);
+        
+        // Get activities with this userId
+        const activitiesResponse = await walkApi.getAllForUser(userId);
+        console.log('Activities for this user:', activitiesResponse);
+        
+        // CRITICAL: Check if any activities exist at all in the database
+        try {
+          // This depends on your API structure - you might need a different endpoint
+          const response = await fetch('/api/walks');
+          const allActivities = await response.json();
+          console.log('All activities in database:', allActivities);
+        } catch (e) {
+          console.error('Error fetching all activities:', e);
+        }
+      } catch (e) {
+        console.error('Error debugging data associations:', e);
+      }
+    }
+    console.groupEnd();
+  };
 
   // Provide the context value to children
   return (
@@ -524,7 +635,8 @@ const ensureUserExists = async (): Promise<string | null> => {
         error,
         addActivity, 
         setUserProfile,
-        fetchActivities
+        fetchActivities,
+        debugDataAssociations
       }}
     >
       {children}
