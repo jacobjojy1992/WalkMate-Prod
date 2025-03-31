@@ -433,15 +433,18 @@ export const walkApi = {
     date: string;
   }): Promise<ApiResponse<ApiWalk>> => {
     try {
-      // FIXED: Use consistent API path construction
       const fullUrl = `${API_URL}/api/walks`;
       console.log('Making API request to: POST', fullUrl, walkData);
       
       const response = await axios.post<BackendResponse<ApiWalk>>(fullUrl, walkData);
       console.log('API response success:', response.status);
+      
+      // The key fix: Check if response.data.data exists, otherwise use response.data directly
+      const responseData = response.data && 'data' in response.data ? response.data.data : response.data;
+      
       return {
         success: true,
-        data: response.data.data,
+        data: responseData,
         error: null
       };
     } catch (error) {
@@ -454,7 +457,6 @@ export const walkApi = {
       };
     }
   },
-
   /**
    * Delete a walk
    * @param id The walk ID to delete
