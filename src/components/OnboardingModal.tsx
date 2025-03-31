@@ -1,4 +1,3 @@
-// src/components/OnboardingModal.tsx
 'use client';
 
 import { useState } from 'react';
@@ -43,6 +42,9 @@ export default function OnboardingModal({ onClose }: OnboardingModalProps) {
           value: goalValue
         }
       });
+      
+      // Mark setup as complete in localStorage
+      localStorage.setItem('walkmateSetupComplete', 'true');
       
       // Close the modal
       onClose();

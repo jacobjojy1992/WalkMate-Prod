@@ -374,7 +374,6 @@ export function WalkProvider({ children }: { children: ReactNode }) {
     window.location.reload();
   }, []);
 
-  // Initialize data on component mount
   useEffect(() => {
     const initializeData = async () => {
       console.group('initializeData');
@@ -382,7 +381,18 @@ export function WalkProvider({ children }: { children: ReactNode }) {
       setError(null);
       
       try {
-        // Synchronize user to ensure it exists in database
+        // Check if we've completed onboarding before
+        const setupComplete = localStorage.getItem('walkmateSetupComplete') === 'true';
+        
+        if (!setupComplete) {
+          // If onboarding not complete, don't auto-create user
+          console.log('Onboarding not completed, waiting for user input');
+          setIsLoading(false);
+          console.groupEnd();
+          return;
+        }
+        
+        // Onboarding is complete, proceed with normal initialization
         const userId = await synchronizeUser();
         console.log('Synchronized user with ID:', userId);
         
