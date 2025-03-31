@@ -227,14 +227,23 @@ export function WalkProvider({ children }: { children: ReactNode }) {
       const formattedUserId = userId.toString();
       
       console.log('Making API request to get activities');
-      const response = await walkApi.getAllForUser(formattedUserId);
-      console.log('API response:', response);
+      // Direct fetch with userId as a query parameter instead of using walkApi service
+      const response = await fetch(`/api/walks?userId=${formattedUserId}`);
+      const responseData = await response.json();
+      console.log('API response:', responseData);
       
-      if (response.success && Array.isArray(response.data)) {
-        console.log(`Found ${response.data.length} activities in database`);
+      // Convert the direct fetch response to match your expected structure
+      const apiResponse = {
+        success: response.ok,
+        data: responseData.data || responseData,
+        error: responseData.error
+      };
+      
+      if (apiResponse.success && Array.isArray(apiResponse.data)) {
+        console.log(`Found ${apiResponse.data.length} activities in database`);
         
-        if (response.data.length > 0) {
-          const convertedActivities = response.data.map(apiWalkToWalkActivity);
+        if (apiResponse.data.length > 0) {
+          const convertedActivities = apiResponse.data.map(apiWalkToWalkActivity);
           console.log('Converted activities:', convertedActivities);
           
           setActivities(convertedActivities);
@@ -246,7 +255,7 @@ export function WalkProvider({ children }: { children: ReactNode }) {
         
         console.log('No activities found in database');
       } else {
-        console.warn('Unexpected API response structure:', response);
+        console.warn('Unexpected API response structure:', apiResponse);
       }
       
       // Try localStorage fallback
