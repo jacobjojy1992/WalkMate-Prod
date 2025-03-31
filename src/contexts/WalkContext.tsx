@@ -188,7 +188,16 @@ const ensureUserExists = async (): Promise<string | null> => {
       // Add enhanced error details logging
       if (err && typeof err === 'object') {
         // Safe type checking for Axios errors
-        const error = err as any; // Use any temporarily for type checking
+        interface ErrorWithResponse {
+          response?: {
+            status?: number;
+            data?: unknown;
+          };
+          message?: string;
+          code?: string;
+        }
+        
+        const error = err as ErrorWithResponse; // Use any temporarily for type checking
         
         if (error.response) {
           // This is likely an Axios error with response data
