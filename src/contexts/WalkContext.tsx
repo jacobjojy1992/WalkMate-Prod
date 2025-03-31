@@ -2,7 +2,7 @@
 
 import { createContext, useState, useContext, ReactNode, useEffect, useCallback } from 'react';
 import { ApiUserProfile, WalkActivity, ApiUser, ApiWalk } from '@/types';
-import { userApi, walkApi } from '@/services/api';
+import { userApi } from '@/services/api';
 
 // Define context type
 interface WalkContextType {
@@ -226,24 +226,18 @@ export function WalkProvider({ children }: { children: ReactNode }) {
       // Ensure userId is in string format
       const formattedUserId = userId.toString();
       
-      console.log('Making API request to get activities');
-      // Direct fetch with userId as a query parameter instead of using walkApi service
+      console.log('Making API request to get activities with URL parameter');
+      // CRITICAL FIX: Direct fetch with userId as a query parameter
       const response = await fetch(`/api/walks?userId=${formattedUserId}`);
       const responseData = await response.json();
       console.log('API response:', responseData);
       
-      // Convert the direct fetch response to match your expected structure
-      const apiResponse = {
-        success: response.ok,
-        data: responseData.data || responseData,
-        error: responseData.error
-      };
-      
-      if (apiResponse.success && Array.isArray(apiResponse.data)) {
-        console.log(`Found ${apiResponse.data.length} activities in database`);
+      // Check if we got a valid array of activities
+      if (Array.isArray(responseData)) {
+        console.log(`Found ${responseData.length} activities in database`);
         
-        if (apiResponse.data.length > 0) {
-          const convertedActivities = apiResponse.data.map(apiWalkToWalkActivity);
+        if (responseData.length > 0) {
+          const convertedActivities = responseData.map(apiWalkToWalkActivity);
           console.log('Converted activities:', convertedActivities);
           
           setActivities(convertedActivities);
@@ -255,7 +249,21 @@ export function WalkProvider({ children }: { children: ReactNode }) {
         
         console.log('No activities found in database');
       } else {
-        console.warn('Unexpected API response structure:', apiResponse);
+        console.warn('Unexpected API response structure:', responseData);
+        // If response is not an array, check if it's nested
+        if (responseData.data && Array.isArray(responseData.data)) {
+          const data = responseData.data;
+          console.log(`Found ${data.length} activities in nested data`);
+          
+          if (data.length > 0) {
+            const convertedActivities = data.map(apiWalkToWalkActivity);
+            setActivities(convertedActivities);
+            localStorage.setItem('walkActivities', JSON.stringify(convertedActivities));
+            
+            console.groupEnd();
+            return;
+          }
+        }
       }
       
       // Try localStorage fallback
@@ -301,6 +309,23 @@ export function WalkProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Function to ensure consistent userId between localStorage and context
+  const ensureConsistentUserId = useCallback(async () => {
+    const storedUserId = localStorage.getItem('currentUserId');
+    if (storedUserId && userProfile?.id && storedUserId !== userProfile.id) {
+      console.log('Ensuring consistent userId', {
+        localStorage: storedUserId,
+        context: userProfile.id
+      });
+      // Update the userProfile in state to match localStorage
+      setUserProfileState({
+        ...userProfile,
+        id: storedUserId
+      });
+    }
+    return storedUserId;
+  }, [userProfile]);
+
   // Initialize data on component mount
   useEffect(() => {
     const initializeData = async () => {
@@ -326,6 +351,9 @@ export function WalkProvider({ children }: { children: ReactNode }) {
               // Save to localStorage for persistent sessions
               localStorage.setItem('currentUserId', userId);
               localStorage.setItem('walkmateUserProfile', JSON.stringify(profile));
+              
+              // Ensure consistent userId before fetching activities
+              await ensureConsistentUserId();
               
               // Now fetch user's activities
               await fetchActivitiesForUser(userId);
@@ -378,7 +406,7 @@ export function WalkProvider({ children }: { children: ReactNode }) {
     };
     
     initializeData();
-  }, [fetchActivitiesForUser]);
+  }, [fetchActivitiesForUser, ensureConsistentUserId]);
 
   // UPDATED: Enhanced activity creation with improved date handling and ID consistency
   const addActivity = useCallback(async (activity: Omit<WalkActivity, 'id' | 'userId'>) => {
@@ -392,8 +420,19 @@ export function WalkProvider({ children }: { children: ReactNode }) {
       return;
     }
     
-    // CRITICAL: Ensure userId is in the exact same format
+    // CRITICAL: Ensure userId is in the exact same format as stored in localStorage
     const userId = userProfile.id.toString();
+    // Double check that this matches what's in localStorage
+    const storedUserId = localStorage.getItem('currentUserId');
+    if (storedUserId && storedUserId !== userId) {
+      console.warn('userId mismatch between context and localStorage', {
+        context: userId,
+        localStorage: storedUserId
+      });
+      // Use the localStorage version for consistency
+      const consistentId = await ensureConsistentUserId() || userId;
+      console.log('Using consistent userId:', consistentId);
+    }
     
     setIsLoading(true);
     setError(null);
@@ -414,23 +453,12 @@ export function WalkProvider({ children }: { children: ReactNode }) {
       console.log('Activity timestamp:', activity.timestamp);
       console.log('Extracted date for activity:', activityDate);
       
-      // Prepare activity data for API - keep using the timestamp for API
-      const walkData = {
-        userId: userId, // Explicitly use the string format
-        steps: activity.steps,
-        distance: activity.distance,
-        duration: activity.duration,
-        date: activity.timestamp // Keep using timestamp for the API
-      };
-      
-      console.log('Sending to API:', walkData);
-      
       // Add to localStorage immediately as a backup
       const tempId = `temp_${Date.now()}`;
       const tempActivity = {
         ...activity,
         id: tempId,
-        userId: userId,
+        userId: userProfile.id,
         date: activityDate
       } as WalkActivity;
       
@@ -441,41 +469,55 @@ export function WalkProvider({ children }: { children: ReactNode }) {
       const updatedActivities = [...activities, tempActivity];
       localStorage.setItem('walkActivities', JSON.stringify(updatedActivities));
       
-      // Now send to API
-      const response = await walkApi.create(walkData);
-      console.log('API create response:', response);
+      // Prepare activity data for API - keep using the timestamp for API
+      const walkData = {
+        userId: userProfile.id, // Explicitly use the profile id
+        steps: activity.steps,
+        distance: activity.distance,
+        duration: activity.duration,
+        date: activity.timestamp // Keep using timestamp for the API
+      };
       
-      if (response.success && response.data) {
-        // Some APIs nest data within another 'data' property
-        const responseData = response.data;
-        
-        // Replace the temp activity with the real one from server
-        const serverActivity = {
-          id: responseData.id.toString(),
-          userId: responseData.userId.toString(),
-          steps: responseData.steps,
-          distance: responseData.distance,
-          duration: responseData.duration,
-          date: activityDate,
-          timestamp: responseData.date
-        } as WalkActivity;
-        
-        console.log('Replacing temp activity with server activity:', serverActivity);
-        
-        setActivities(prev => 
-          prev.map(act => act.id === tempId ? serverActivity : act)
-        );
-        
-        // Update localStorage
-        const finalActivities = activities.map(act => 
-          act.id === tempId ? serverActivity : act
-        );
-        localStorage.setItem('walkActivities', JSON.stringify(finalActivities));
-      } else {
-        console.warn('API error or unsuccessful response', response);
-        setError(response.error || 'Failed to save activity to server');
-        // Keep the temporary activity in place
+      console.log('Sending to API:', walkData);
+      
+      // Now send to API
+      const response = await fetch('/api/walks', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(walkData)
+      });
+      
+      if (!response.ok) {
+        throw new Error(`API responded with status ${response.status}`);
       }
+      
+      const responseData = await response.json();
+      console.log('API create response:', responseData);
+      
+      // Replace the temp activity with the real one from server
+      const serverActivity = {
+        id: responseData.id.toString(),
+        userId: responseData.userId.toString(),
+        steps: responseData.steps,
+        distance: responseData.distance,
+        duration: responseData.duration,
+        date: activityDate,
+        timestamp: responseData.date
+      } as WalkActivity;
+      
+      console.log('Replacing temp activity with server activity:', serverActivity);
+      
+      setActivities(prev => 
+        prev.map(act => act.id === tempId ? serverActivity : act)
+      );
+      
+      // Update localStorage
+      const finalActivities = activities.map(act => 
+        act.id === tempId ? serverActivity : act
+      );
+      localStorage.setItem('walkActivities', JSON.stringify(finalActivities));
     } catch (err) {
       console.error('Error adding activity:', err);
       logErrorDetails(err);
@@ -485,7 +527,7 @@ export function WalkProvider({ children }: { children: ReactNode }) {
       setIsLoading(false);
       console.groupEnd();
     }
-  }, [activities, userProfile]);
+  }, [activities, userProfile, ensureConsistentUserId]);
 
   // Function to create or update user profile - wrapped in useCallback
   const setUserProfile = useCallback(async (profile: ApiUserProfile) => {
@@ -590,8 +632,13 @@ export function WalkProvider({ children }: { children: ReactNode }) {
     setIsLoading(true);
     setError(null);
     
+    // Ensure consistent userId before fetching
+    const consistentId = await ensureConsistentUserId();
+    const userId = consistentId || userProfile.id.toString();
+    console.log('Using userId for fetch:', userId);
+    
     try {
-      await fetchActivitiesForUser(userProfile.id.toString());
+      await fetchActivitiesForUser(userId);
     } catch (err) {
       console.error('Error fetching activities:', err);
       logErrorDetails(err);
@@ -600,7 +647,7 @@ export function WalkProvider({ children }: { children: ReactNode }) {
       setIsLoading(false);
       console.groupEnd();
     }
-  }, [userProfile, isLoading, fetchActivitiesForUser]);
+  }, [userProfile, isLoading, fetchActivitiesForUser, ensureConsistentUserId]);
   
   // Debug function to help diagnose data associations
   const debugDataAssociations = async () => {
@@ -614,16 +661,23 @@ export function WalkProvider({ children }: { children: ReactNode }) {
         const userResponse = await userApi.getById(userId);
         console.log('User in database:', userResponse);
         
-        // Get activities with this userId
-        const activitiesResponse = await walkApi.getAllForUser(userId);
-        console.log('Activities for this user:', activitiesResponse);
+        // Get activities with this userId - make direct fetch for reliability
+        console.log('Fetching activities directly from API');
+        const activitiesResponse = await fetch(`/api/walks?userId=${userId}`);
+        const activitiesData = await activitiesResponse.json();
+        console.log('Activities for this user:', activitiesData);
         
         // CRITICAL: Check if any activities exist at all in the database
         try {
-          // This depends on your API structure - you might need a different endpoint
-          const response = await fetch('/api/walks');
-          const allActivities = await response.json();
-          console.log('All activities in database:', allActivities);
+          console.log('Checking fix status of walks');
+          const response = await fetch('/api/debug');
+          const debugData = await response.json();
+          console.log('Debug API data:', debugData);
+          
+          if (debugData.walkCount > 0) {
+            console.log(`Total walks in database: ${debugData.walkCount}`);
+            console.log(`Orphaned walks: ${debugData.orphanedWalkCount}`);
+          }
         } catch (e) {
           console.error('Error fetching all activities:', e);
         }
