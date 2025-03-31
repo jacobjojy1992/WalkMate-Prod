@@ -1,9 +1,9 @@
-// src/contexts/WalkContext.tsx
 'use client';
 
 import { createContext, useState, useContext, ReactNode, useEffect, useCallback } from 'react';
 import { ApiUserProfile, WalkActivity, ApiUser, ApiWalk } from '@/types';
 import { userApi, walkApi } from '@/services/api';
+import { getOrCreateDeviceId, getUserProfileFromLocalStorage, saveUserProfileToLocalStorage } from '@/utils/deviceStorage';
 
 // Define context type
 interface WalkContextType {
@@ -131,53 +131,83 @@ export function WalkProvider({ children }: { children: ReactNode }) {
       setError(null);
       
       try {
-        // Try to get user ID from localStorage
-        const userId = localStorage.getItem('currentUserId');
+        // Get device ID first
+        const deviceId = getOrCreateDeviceId();
         
-        if (userId) {
-          // Try to fetch user from API
-          try {
-            const response = await userApi.getById(userId);
+        try {
+          // Try to fetch user with this device ID
+          const response = await userApi.getById(deviceId);
+          
+          if (response.success && response.data) {
+            // User exists in database - use it
+            const profile = apiUserToUserProfile(response.data);
+            setUserProfileState(profile);
+            saveUserProfileToLocalStorage(profile);
             
-            if (response.success && response.data) {
-              // Convert API user to our app's user profile format
-              const profile = apiUserToUserProfile(response.data);
-              setUserProfileState(profile);
-              
-              // Now fetch user's activities
-              await fetchActivitiesForUser(userId);
-            } else {
-              console.warn('No user data received from API or request unsuccessful', response);
-              // If user not found on API but exists in localStorage, use localStorage data
-              const savedProfile = localStorage.getItem('userProfile');
-              if (savedProfile) {
-                try {
-                  setUserProfileState(JSON.parse(savedProfile));
-                } catch (e) {
-                  console.error('Error parsing localStorage userProfile', e);
-                }
-              }
-            }
-          } catch (err) {
-            console.error('Error fetching user:', err);
-            // Fall back to localStorage data
-            const savedProfile = localStorage.getItem('userProfile');
+            // Now fetch user's activities
+            await fetchActivitiesForUser(deviceId);
+          } else {
+            console.warn('No user data received from API or request unsuccessful', response);
+            
+            // User not found in API, check if we have a profile in localStorage
+            const savedProfile = getUserProfileFromLocalStorage();
+            
             if (savedProfile) {
+              // Try to create a new user (without specifying ID - let server generate it)
               try {
-                setUserProfileState(JSON.parse(savedProfile));
-              } catch (e) {
-                console.error('Error parsing localStorage userProfile', e);
+                const createResponse = await userApi.create({
+                  name: savedProfile.name || 'Device User',
+                  goalType: savedProfile.dailyGoal.type,
+                  goalValue: savedProfile.dailyGoal.value
+                });
+                
+                if (createResponse.success && createResponse.data) {
+                  // User created successfully - use server-generated ID
+                  const newProfile = apiUserToUserProfile(createResponse.data);
+                  
+                  // Update our device ID to match the new server-generated ID
+                  // Make sure we have an ID before using it
+                  if (newProfile.id) {
+                    localStorage.setItem('currentUserId', newProfile.id);
+                  }
+                  
+                  setUserProfileState(newProfile);
+                  saveUserProfileToLocalStorage(newProfile);
+                  
+                  // Fetch activities for the new user (should be empty)
+                  // Make sure we have an ID before attempting to fetch
+                  if (newProfile.id) {
+                    await fetchActivitiesForUser(newProfile.id);
+                  }
+                } else {
+                  // Fallback to using local profile if API fails
+                  setUserProfileState(savedProfile);
+                }
+              } catch (createError) {
+                console.error('Error creating user:', createError);
+                setUserProfileState(savedProfile);
               }
+            } else {
+              // No saved profile, we'll show onboarding later
+              console.log('No user profile found, will show onboarding');
             }
           }
-        } else {
-          // No user ID in localStorage, check if we have a profile
-          const savedProfile = localStorage.getItem('userProfile');
+        } catch (err) {
+          console.error('Error fetching user:', err);
+          
+          // Fall back to localStorage data
+          const savedProfile = getUserProfileFromLocalStorage();
           if (savedProfile) {
-            try {
-              setUserProfileState(JSON.parse(savedProfile));
-            } catch (e) {
-              console.error('Error parsing localStorage userProfile', e);
+            setUserProfileState(savedProfile);
+            
+            // Try to load cached activities
+            const savedActivities = localStorage.getItem('walkActivities');
+            if (savedActivities) {
+              try {
+                setActivities(JSON.parse(savedActivities));
+              } catch (e) {
+                console.error('Error parsing localStorage activities', e);
+              }
             }
           }
         }
@@ -218,6 +248,24 @@ export function WalkProvider({ children }: { children: ReactNode }) {
       console.log('Activity timestamp:', activity.timestamp);
       console.log('Extracted date for activity:', activityDate);
       
+      // Create a local version of the activity first
+      const localActivity: WalkActivity = {
+        id: 'local_' + Date.now(),
+        userId: userProfile.id,
+        steps: activity.steps,
+        distance: activity.distance,
+        duration: activity.duration,
+        date: activityDate,
+        timestamp: activity.timestamp
+      };
+      
+      // Add to local state immediately
+      const updatedActivities = [...activities, localActivity];
+      setActivities(updatedActivities);
+      
+      // Save to localStorage
+      localStorage.setItem('walkActivities', JSON.stringify(updatedActivities));
+      
       // Prepare activity data for API - keep using the timestamp for API
       const walkData = {
         userId: userProfile.id,
@@ -225,12 +273,6 @@ export function WalkProvider({ children }: { children: ReactNode }) {
         distance: activity.distance,
         duration: activity.duration,
         date: activity.timestamp // Keep using timestamp for the API
-      };
-      
-      // Create a modified activity with the forced date
-      const modifiedActivity = {
-        ...activity,
-        date: activityDate // Force the correct date string
       };
       
       // Send to API
@@ -241,7 +283,7 @@ export function WalkProvider({ children }: { children: ReactNode }) {
       
       if (response.success && response.data) {
         // Use our custom conversion with proper date handling instead of apiWalkToWalkActivity
-        const newActivity = {
+        const serverActivity = {
           id: response.data.id,
           userId: response.data.userId,
           steps: response.data.steps,
@@ -253,49 +295,21 @@ export function WalkProvider({ children }: { children: ReactNode }) {
         
         console.log('Adding activity with date:', activityDate);
         
-        setActivities(prev => [...prev, newActivity]);
+        // Replace the temporary activity with the server version
+        const finalActivities = activities.map(act => 
+          act.id === localActivity.id ? serverActivity : act
+        );
         
-        // Also update localStorage as a backup
-        const updatedActivities = [...activities, newActivity];
-        localStorage.setItem('walkActivities', JSON.stringify(updatedActivities));
+        setActivities(finalActivities);
+        localStorage.setItem('walkActivities', JSON.stringify(finalActivities));
       } else {
         setError(response.error || 'Failed to add activity');
-        
-        // Fallback: Add to localStorage anyway
-        const newActivity = {
-          ...modifiedActivity, // Use the modified activity with corrected date
-          id: Date.now().toString(),
-          userId: userProfile.id
-        } as WalkActivity;
-        
-        setActivities(prev => [...prev, newActivity]);
-        
-        const updatedActivities = [...activities, newActivity];
-        localStorage.setItem('walkActivities', JSON.stringify(updatedActivities));
+        // Activity is already saved locally, so no need for additional fallback
       }
     } catch (err) {
       console.error('Error adding activity:', err);
       setError('Failed to add activity. Please try again.');
-      
-      // Extract date again for the fallback
-      const fallbackDate = new Date(activity.timestamp);
-      const fallbackYear = fallbackDate.getFullYear();
-      const fallbackMonth = String(fallbackDate.getMonth() + 1).padStart(2, '0');
-      const fallbackDay = String(fallbackDate.getDate()).padStart(2, '0');
-      const fallbackDateStr = `${fallbackYear}-${fallbackMonth}-${fallbackDay}`;
-      
-      // Fallback: Add to localStorage anyway
-      const newActivity = {
-        ...activity,
-        id: Date.now().toString(),
-        userId: userProfile.id,
-        date: fallbackDateStr // Ensure the date is correct even in fallback
-      } as WalkActivity;
-      
-      setActivities(prev => [...prev, newActivity]);
-      
-      const updatedActivities = [...activities, newActivity];
-      localStorage.setItem('walkActivities', JSON.stringify(updatedActivities));
+      // Activity is already saved locally, so no need for additional fallback
     } finally {
       setIsLoading(false);
     }
@@ -314,7 +328,7 @@ export function WalkProvider({ children }: { children: ReactNode }) {
         // Update existing user
         response = await userApi.update(userId, userProfileToApiUser(profile));
       } else {
-        // Create new user
+        // Create new user (without specifying ID - let server generate it)
         response = await userApi.create({
           name: profile.name,
           goalType: profile.dailyGoal.type,
@@ -327,15 +341,12 @@ export function WalkProvider({ children }: { children: ReactNode }) {
         const updatedProfile = apiUserToUserProfile(response.data);
         setUserProfileState(updatedProfile);
         
-        // Save user ID to localStorage for persistent sessions
-        localStorage.setItem('currentUserId', response.data.id);
-        
-        // Also save profile to localStorage as backup
-        localStorage.setItem('userProfile', JSON.stringify(updatedProfile));
+        // Save user profile to localStorage
+        saveUserProfileToLocalStorage(updatedProfile);
         
         // If this is a new user, fetch their activities (which should be empty)
-        if (!userId && response.data.id) {
-          await fetchActivitiesForUser(response.data.id);
+        if (!userId && updatedProfile.id) {
+          await fetchActivitiesForUser(updatedProfile.id);
         }
       } else {
         setError(response.error || 'Failed to update profile');
@@ -347,12 +358,7 @@ export function WalkProvider({ children }: { children: ReactNode }) {
           id: profile.id || Date.now().toString()
         };
         setUserProfileState(fallbackProfile);
-        localStorage.setItem('userProfile', JSON.stringify(fallbackProfile));
-        
-        // If this is a new user without an ID yet, generate one and save it
-        if (!profile.id) {
-          localStorage.setItem('currentUserId', fallbackProfile.id);
-        }
+        saveUserProfileToLocalStorage(fallbackProfile);
       }
     } catch (err) {
       console.error('Error updating profile:', err);
@@ -364,12 +370,7 @@ export function WalkProvider({ children }: { children: ReactNode }) {
         id: profile.id || Date.now().toString()
       };
       setUserProfileState(fallbackProfile);
-      localStorage.setItem('userProfile', JSON.stringify(fallbackProfile));
-      
-      // If this is a new user without an ID yet, generate one and save it
-      if (!profile.id) {
-        localStorage.setItem('currentUserId', fallbackProfile.id);
-      }
+      saveUserProfileToLocalStorage(fallbackProfile);
     } finally {
       setIsLoading(false);
     }
