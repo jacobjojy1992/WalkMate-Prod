@@ -143,7 +143,8 @@ export default function ActivityLogForm() {
       // Create timestamp for the selected date (at noon)
       // This ensures the activity is logged for the correct date
       const [year, month, day] = date.split('-').map(Number);
-      const timestamp = new Date(year, month - 1, day, 12, 0, 0).toISOString();
+      const localDate = new Date(year, month - 1, day, 12, 0, 0);
+      const timestamp = localDate.toISOString();
       
       // Add the activity with the correct date
       await addActivity({
@@ -276,7 +277,7 @@ export default function ActivityLogForm() {
             value={date}
             onChange={(e) => setDate(e.target.value)}
             className="w-full p-2 bg-gray-700 rounded text-white"
-            max={new Date().toISOString().split('T')[0]} // Disable future dates
+            max={`${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`}
             disabled={isFormLoading || isNetworkUnavailable}
             required
           />
