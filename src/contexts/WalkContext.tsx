@@ -2,8 +2,6 @@
 
 import { createContext, useState, useContext, ReactNode, useEffect, useCallback } from 'react';
 import { ApiUserProfile, WalkActivity, ApiUser, ApiWalk } from '@/types';
-// Remove userApi import if not using it
-// import { userApi } from '@/services/api';
 
 // Define context type
 interface WalkContextType {
@@ -15,7 +13,7 @@ interface WalkContextType {
   setUserProfile: (profile: ApiUserProfile) => Promise<void>;
   fetchActivities: () => Promise<void>;
   resetApplication: () => void;
-  debugDataAssociations?: () => Promise<void>; // Optional debug function
+  debugDataAssociations?: () => Promise<void>;
 }
 
 // Create context with default values
@@ -33,7 +31,7 @@ const WalkContext = createContext<WalkContextType>({
 // Helper functions to convert between frontend and backend data formats
 const apiUserToUserProfile = (apiUser: ApiUser): ApiUserProfile => {
   return {
-    id: apiUser.id.toString(), // Ensure string format
+    id: apiUser.id.toString(),
     name: apiUser.name,
     dailyGoal: {
       type: apiUser.goalType as 'steps' | 'distance',
@@ -42,43 +40,32 @@ const apiUserToUserProfile = (apiUser: ApiUser): ApiUserProfile => {
   };
 };
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const userProfileToApiUser = (profile: ApiUserProfile): Partial<ApiUser> => {
-  return {
-    name: profile.name,
-    goalType: profile.dailyGoal.type,
-    goalValue: profile.dailyGoal.value
-  };
-};
 
-// UPDATED: Improved date handling to fix midnight timer issues
+
 const apiWalkToWalkActivity = (apiWalk: ApiWalk): WalkActivity => {
-  // Parse the date string to a Date object for more accurate date extraction
   const walkDate = new Date(apiWalk.date);
   
-  // Extract date components with proper timezone handling
   const year = walkDate.getFullYear();
   const month = String(walkDate.getMonth() + 1).padStart(2, '0');
   const day = String(walkDate.getDate()).padStart(2, '0');
   
-  // Create proper date string in YYYY-MM-DD format
   const dateStr = `${year}-${month}-${day}`;
   
   console.log('Converting API walk date:', apiWalk.date);
   console.log('To activity date:', dateStr);
   
   return {
-    id: apiWalk.id.toString(), // Ensure string format
-    userId: apiWalk.userId.toString(), // Ensure string format
+    id: apiWalk.id.toString(),
+    userId: apiWalk.userId.toString(),
     steps: apiWalk.steps,
     distance: apiWalk.distance,
     duration: apiWalk.duration,
-    date: dateStr, // Use the carefully constructed date string
-    timestamp: apiWalk.date // Keep the full ISO string for timestamp
+    date: dateStr,
+    timestamp: apiWalk.date
   };
 };
 
-// Define a more specific error type to avoid using 'any'
+// Define error type
 interface ErrorWithResponse {
   response?: {
     status?: number;
@@ -90,13 +77,11 @@ interface ErrorWithResponse {
 
 // Provider component
 export function WalkProvider({ children }: { children: ReactNode }) {
-  // State
   const [activities, setActivities] = useState<WalkActivity[]>([]);
   const [userProfile, setUserProfileState] = useState<ApiUserProfile | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(true); // Start with loading true
   const [error, setError] = useState<string | null>(null);
 
-  // Helper function to log error details without using 'any'
   const logErrorDetails = (err: unknown): void => {
     if (!err || typeof err !== 'object') return;
     
@@ -116,11 +101,6 @@ export function WalkProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  /**
-   * Create and store a new user
-   * This function creates a new user in the database and stores it in localStorage
-   * @returns The user ID (string) or null if creation failed
-   */
   const createAndStoreNewUser = useCallback(async (): Promise<string | null> => {
     console.group('createAndStoreNewUser');
     try {
@@ -151,10 +131,8 @@ export function WalkProvider({ children }: { children: ReactNode }) {
       const userId = data.id.toString();
       console.log('Created new user with ID:', userId);
       
-      // Save to localStorage
       localStorage.setItem('currentUserId', userId);
       
-      // Save the profile
       const newProfile = {
         id: userId,
         name: data.name || 'Device User',
@@ -176,20 +154,12 @@ export function WalkProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  /**
-   * Synchronize user between localStorage and database
-   * This function ensures that the user in localStorage exists in the database
-   * If not, it creates a new user
-   * @returns The user ID (string) or null if synchronization failed
-   */
   const synchronizeUser = useCallback(async (): Promise<string | null> => {
     console.group('synchronizeUser');
     try {
-      // Check if we have a userId in localStorage
       const storedUserId = localStorage.getItem('currentUserId');
       console.log('Stored user ID:', storedUserId);
       
-      // If no stored ID, create a fresh user
       if (!storedUserId) {
         console.log('No user ID in localStorage, creating new user');
         const newUserId = await createAndStoreNewUser();
@@ -197,17 +167,14 @@ export function WalkProvider({ children }: { children: ReactNode }) {
         return newUserId;
       }
       
-      // Try to verify user exists in database
       try {
         console.log(`Verifying user ${storedUserId} exists in database`);
         const response = await fetch(`/api/users?id=${storedUserId}`);
         
-        // If user exists, return ID
         if (response.ok) {
           const userData = await response.json();
           console.log('User exists in database:', userData);
           
-          // Update localStorage with the latest user data
           const profile = apiUserToUserProfile(userData);
           localStorage.setItem('walkmateUserProfile', JSON.stringify(profile));
           setUserProfileState(profile);
@@ -217,7 +184,6 @@ export function WalkProvider({ children }: { children: ReactNode }) {
         } else {
           console.log('User not found in database, creating new user');
           
-          // Clear localStorage before creating new user
           localStorage.removeItem('currentUserId');
           localStorage.removeItem('walkmateUserProfile');
           localStorage.removeItem('walkActivities');
@@ -229,7 +195,6 @@ export function WalkProvider({ children }: { children: ReactNode }) {
       } catch (error) {
         console.error('Error verifying user:', error);
         
-        // If verification fails, create a new user
         localStorage.removeItem('currentUserId');
         localStorage.removeItem('walkmateUserProfile');
         
@@ -244,7 +209,6 @@ export function WalkProvider({ children }: { children: ReactNode }) {
     }
   }, [createAndStoreNewUser]);
 
-  // Function to fetch activities for a specific user - wrapped in useCallback
   const fetchActivitiesForUser = useCallback(async (userId: string) => {
     console.group(`fetchActivitiesForUser(${userId})`);
     console.log('Fetching activities for user ID:', userId);
@@ -256,11 +220,9 @@ export function WalkProvider({ children }: { children: ReactNode }) {
     }
     
     try {
-      // Ensure userId is in string format
       const formattedUserId = userId.toString();
       
-      console.log('Making API request to get activities with URL parameter');
-      // Direct fetch with userId as a query parameter
+      console.log('Making API request to get activities');
       const response = await fetch(`/api/walks?userId=${formattedUserId}`);
       
       if (!response.ok) {
@@ -270,7 +232,6 @@ export function WalkProvider({ children }: { children: ReactNode }) {
       const responseData = await response.json();
       console.log('API response:', responseData);
       
-      // Check if we got a valid array of activities
       if (Array.isArray(responseData)) {
         console.log(`Found ${responseData.length} activities in database`);
         
@@ -289,7 +250,6 @@ export function WalkProvider({ children }: { children: ReactNode }) {
         setActivities([]);
       } else {
         console.warn('Unexpected API response structure:', responseData);
-        // If response is not an array, check if it's nested
         if (responseData.data && Array.isArray(responseData.data)) {
           const data = responseData.data;
           console.log(`Found ${data.length} activities in nested data`);
@@ -304,11 +264,9 @@ export function WalkProvider({ children }: { children: ReactNode }) {
           }
         }
         
-        // If we get here, we didn't find any activities
         setActivities([]);
       }
       
-      // Try localStorage fallback
       const savedActivities = localStorage.getItem('walkActivities');
       console.log('Checking localStorage for activities:', savedActivities ? 'Found' : 'Not found');
       
@@ -317,7 +275,6 @@ export function WalkProvider({ children }: { children: ReactNode }) {
           const parsed = JSON.parse(savedActivities);
           console.log('Parsed localStorage activities:', parsed);
           
-          // Ensure we only use activities for this user
           const userActivities = Array.isArray(parsed) 
             ? parsed.filter(act => act.userId === formattedUserId)
             : [];
@@ -337,7 +294,6 @@ export function WalkProvider({ children }: { children: ReactNode }) {
       setError('Failed to fetch activities');
       setActivities([]);
       
-      // Try localStorage fallback
       const savedActivities = localStorage.getItem('walkActivities');
       if (savedActivities) {
         try {
@@ -356,21 +312,18 @@ export function WalkProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Reset application state and localStorage
   const resetApplication = useCallback(() => {
     console.log('Resetting application state and localStorage');
     
-    // Clear localStorage
     localStorage.removeItem('currentUserId');
     localStorage.removeItem('walkmateUserProfile');
     localStorage.removeItem('walkActivities');
+    localStorage.removeItem('walkmateSetupComplete');
     
-    // Reset state
     setUserProfileState(null);
     setActivities([]);
     setError(null);
     
-    // Force page reload to restart application
     window.location.reload();
   }, []);
 
@@ -381,32 +334,31 @@ export function WalkProvider({ children }: { children: ReactNode }) {
       setError(null);
       
       try {
-        // Check if we've completed onboarding before
         const setupComplete = localStorage.getItem('walkmateSetupComplete') === 'true';
         
         if (!setupComplete) {
-          // If onboarding not complete, don't auto-create user
           console.log('Onboarding not completed, waiting for user input');
+          setUserProfileState(null);
           setIsLoading(false);
           console.groupEnd();
           return;
         }
         
-        // Onboarding is complete, proceed with normal initialization
         const userId = await synchronizeUser();
         console.log('Synchronized user with ID:', userId);
         
         if (userId) {
-          // Now fetch user's activities
           await fetchActivitiesForUser(userId);
         } else {
           console.error('Failed to synchronize user');
           setError('Failed to initialize user data');
+          setUserProfileState(null);
         }
       } catch (err) {
         console.error('Error during initialization:', err);
         logErrorDetails(err);
         setError('Failed to initialize app data');
+        setUserProfileState(null);
       } finally {
         setIsLoading(false);
         console.groupEnd();
@@ -414,9 +366,8 @@ export function WalkProvider({ children }: { children: ReactNode }) {
     };
     
     initializeData();
-  }, [synchronizeUser, fetchActivitiesForUser]); // Add synchronizeUser as dependency
+  }, [synchronizeUser, fetchActivitiesForUser]);
 
-  // UPDATED: Enhanced activity creation with improved date handling and ID consistency
   const addActivity = useCallback(async (activity: Omit<WalkActivity, 'id' | 'userId'>) => {
     console.group('addActivity');
     console.log('Activity data:', activity);
@@ -432,7 +383,6 @@ export function WalkProvider({ children }: { children: ReactNode }) {
     setError(null);
     
     try {
-      // Ensure user exists and is synchronized
       const userId = await synchronizeUser();
       
       if (!userId) {
@@ -442,22 +392,15 @@ export function WalkProvider({ children }: { children: ReactNode }) {
         return;
       }
       
-      // CRITICAL FIX: Manually extract the correct date from the timestamp
-      // Parse the timestamp string to a Date object
       const activityStartTime = new Date(activity.timestamp);
-      
-      // Extract date components directly from this Date object
       const year = activityStartTime.getFullYear();
       const month = String(activityStartTime.getMonth() + 1).padStart(2, '0');
       const day = String(activityStartTime.getDate()).padStart(2, '0');
-      
-      // Create a properly formatted date string YYYY-MM-DD
       const activityDate = `${year}-${month}-${day}`;
       
       console.log('Activity timestamp:', activity.timestamp);
       console.log('Extracted date for activity:', activityDate);
       
-      // Add to localStorage immediately as a backup
       const tempId = `temp_${Date.now()}`;
       const tempActivity = {
         ...activity,
@@ -466,25 +409,21 @@ export function WalkProvider({ children }: { children: ReactNode }) {
         date: activityDate
       } as WalkActivity;
       
-      // Update state optimistically
       setActivities(prev => [...prev, tempActivity]);
       
-      // Store in localStorage
       const updatedActivities = [...activities, tempActivity];
       localStorage.setItem('walkActivities', JSON.stringify(updatedActivities));
       
-      // Prepare activity data for API - keep using the timestamp for API
       const walkData = {
-        userId: userId, // Use the synchronized userId
+        userId: userId,
         steps: activity.steps,
         distance: activity.distance,
         duration: activity.duration,
-        date: activity.timestamp // Keep using timestamp for the API
+        date: activity.timestamp
       };
       
       console.log('Sending to API:', walkData);
       
-      // Now send to API
       const response = await fetch('/api/walks', {
         method: 'POST',
         headers: {
@@ -500,7 +439,6 @@ export function WalkProvider({ children }: { children: ReactNode }) {
       const responseData = await response.json();
       console.log('API create response:', responseData);
       
-      // Replace the temp activity with the real one from server
       const serverActivity = {
         id: responseData.id.toString(),
         userId: responseData.userId.toString(),
@@ -512,12 +450,11 @@ export function WalkProvider({ children }: { children: ReactNode }) {
       } as WalkActivity;
       
       console.log('Replacing temp activity with server activity:', serverActivity);
-      
+
       setActivities(prev => 
         prev.map(act => act.id === tempId ? serverActivity : act)
       );
       
-      // Update localStorage
       const finalActivities = activities.map(act => 
         act.id === tempId ? serverActivity : act
       );
@@ -526,14 +463,12 @@ export function WalkProvider({ children }: { children: ReactNode }) {
       console.error('Error adding activity:', err);
       logErrorDetails(err);
       setError('Failed to add activity. Data saved locally only.');
-      // The optimistic update remains in place
     } finally {
       setIsLoading(false);
       console.groupEnd();
     }
   }, [activities, userProfile, synchronizeUser]);
 
-  // Function to set user profile
   const setUserProfile = useCallback(async (profile: ApiUserProfile) => {
     console.group('setUserProfile');
     setIsLoading(true);
@@ -544,7 +479,6 @@ export function WalkProvider({ children }: { children: ReactNode }) {
       const userId = profile.id ? profile.id.toString() : null;
       
       if (userId) {
-        // Update existing user
         console.log('Updating existing user:', userId);
         const updateResponse = await fetch(`/api/users?id=${userId}`, {
           method: 'PUT',
@@ -562,7 +496,6 @@ export function WalkProvider({ children }: { children: ReactNode }) {
         
         response = await updateResponse.json();
       } else {
-        // Create new user
         console.log('Creating new user');
         const createResponse = await fetch('/api/users', {
           method: 'POST',
@@ -583,7 +516,6 @@ export function WalkProvider({ children }: { children: ReactNode }) {
       
       console.log('User API response:', response);
       
-      // Convert API user to our format
       const updatedProfile = {
         id: response.id.toString(),
         name: response.name,
@@ -594,14 +526,9 @@ export function WalkProvider({ children }: { children: ReactNode }) {
       };
       
       setUserProfileState(updatedProfile);
-      
-      // Save user ID to localStorage for persistent sessions
       localStorage.setItem('currentUserId', response.id.toString());
-      
-      // Also save profile to localStorage as backup
       localStorage.setItem('walkmateUserProfile', JSON.stringify(updatedProfile));
       
-      // If this is a new user, fetch their activities (which should be empty)
       if (!userId && response.id) {
         await fetchActivitiesForUser(response.id.toString());
       }
@@ -610,7 +537,6 @@ export function WalkProvider({ children }: { children: ReactNode }) {
       logErrorDetails(err);
       setError('Failed to update profile. Please try again.');
       
-      // Fallback: Update in localStorage anyway
       const fallbackProfile = {
         ...profile,
         id: profile.id || Date.now().toString()
@@ -618,7 +544,6 @@ export function WalkProvider({ children }: { children: ReactNode }) {
       setUserProfileState(fallbackProfile);
       localStorage.setItem('walkmateUserProfile', JSON.stringify(fallbackProfile));
       
-      // If this is a new user without an ID yet, generate one and save it
       if (!profile.id) {
         localStorage.setItem('currentUserId', fallbackProfile.id);
       }
@@ -628,12 +553,10 @@ export function WalkProvider({ children }: { children: ReactNode }) {
     }
   }, [fetchActivitiesForUser]);
 
-  // Function to fetch all activities
   const fetchActivities = useCallback(async () => {
     console.group('fetchActivities');
     
     if (!userProfile?.id) {
-      // No user profile, can't fetch activities
       console.error('Cannot fetch activities: No user profile found');
       setError('Cannot fetch activities: No user profile found');
       console.groupEnd();
@@ -641,7 +564,6 @@ export function WalkProvider({ children }: { children: ReactNode }) {
     }
     
     if (isLoading) {
-      // Already loading, prevent duplicate requests
       console.log('Already loading, skipping duplicate request');
       console.groupEnd();
       return;
@@ -650,7 +572,6 @@ export function WalkProvider({ children }: { children: ReactNode }) {
     setIsLoading(true);
     setError(null);
     
-    // Ensure user is synchronized before fetching
     const userId = await synchronizeUser();
     
     if (!userId) {
@@ -672,8 +593,7 @@ export function WalkProvider({ children }: { children: ReactNode }) {
       console.groupEnd();
     }
   }, [userProfile, isLoading, fetchActivitiesForUser, synchronizeUser]);
-  
-  // Debug function to help diagnose data associations
+
   const debugDataAssociations = useCallback(async () => {
     console.group('DEBUG: Data Associations');
     const userId = localStorage.getItem('currentUserId');
@@ -681,12 +601,10 @@ export function WalkProvider({ children }: { children: ReactNode }) {
     
     if (userId) {
       try {
-        // Get user from database
         const userResponse = await fetch(`/api/users?id=${userId}`);
         const userData = await userResponse.json();
         console.log('User in database:', userData);
         
-        // Get activities with this userId
         const activitiesResponse = await fetch(`/api/walks?userId=${userId}`);
         if (activitiesResponse.ok) {
           const activitiesData = await activitiesResponse.json();
@@ -695,7 +613,6 @@ export function WalkProvider({ children }: { children: ReactNode }) {
           console.error('Failed to fetch activities:', activitiesResponse.status);
         }
         
-        // Get all activities in database
         const allActivitiesResponse = await fetch('/api/walks');
         if (allActivitiesResponse.ok) {
           const allActivities = await allActivitiesResponse.json();
@@ -710,7 +627,6 @@ export function WalkProvider({ children }: { children: ReactNode }) {
     console.groupEnd();
   }, []);
 
-  // Provide the context value to children
   return (
     <WalkContext.Provider 
       value={{ 

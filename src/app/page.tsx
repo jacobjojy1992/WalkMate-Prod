@@ -11,62 +11,31 @@ import RecentActivity from '@/components/RecentActivity';
 import DebugPanel from '@/components/DebugPanel';
 
 export default function Home() {
-  const { userProfile } = useWalkContext();
-  const [showOnboarding, setShowOnboarding] = useState(false);
-  const [isInitializing, setIsInitializing] = useState(true);
+  const { userProfile, isLoading } = useWalkContext();
+  const [showOnboarding, setShowOnboarding] = useState<boolean | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
 
-  // Check for user profile existence - both in context and localStorage
   useEffect(() => {
-    // Function to check if we need to show onboarding
-    const checkUserProfile = () => {
-      console.log("Checking if we need to show onboarding, userProfile:", userProfile);
-      
-      // If we have a user profile in context, no need for onboarding
-      if (userProfile) {
-        console.log("User profile found in context, hiding onboarding");
-        setShowOnboarding(false);
-        setIsInitializing(false);
-        return;
-      }
-      
-      // Double-check localStorage as backup
-      const savedUserIdInStorage = localStorage.getItem('currentUserId');
-      const savedProfileInStorage = localStorage.getItem('userProfile');
-      
-      console.log("Checking localStorage:", { 
-        savedUserIdInStorage, 
-        savedProfileInStorage 
-      });
-      
-      if (savedProfileInStorage && savedUserIdInStorage) {
-        console.log("User data found in localStorage, hiding onboarding");
-        setShowOnboarding(false);
-      } else {
-        console.log("No user data found, showing onboarding");
-        setShowOnboarding(true);
-      }
-      
-      setIsInitializing(false);
-    };
-    
-    // Small delay to allow WalkContext to initialize from localStorage
-    const timeoutId = setTimeout(checkUserProfile, 100);
-    
-    return () => clearTimeout(timeoutId);
-  }, [userProfile]);
+    // Only determine onboarding status after context is loaded
+    if (!isLoading) {
+      const setupComplete = localStorage.getItem('walkmateSetupComplete') === 'true';
+      setShowOnboarding(!setupComplete && !userProfile);
+    }
+  }, [isLoading, userProfile]);
+
+  // Show loading spinner while determining state
+  if (isLoading || showOnboarding === null) {
+    return (
+      <div className="h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
+      </div>
+    );
+  }
 
   // Handle date selection from calendar
   const handleDateSelect = (date: Date) => {
     setSelectedDate(date);
   };
-
-  // Wait until initialization is complete before rendering
-  if (isInitializing) {
-    return <div className="flex justify-center items-center h-screen">
-      <div className="animate-spin h-8 w-8 border-4 border-indigo-500 rounded-full border-t-transparent"></div>
-    </div>;
-  }
 
   return (
     <main className="container mx-auto p-4 max-w-5xl">
@@ -85,7 +54,6 @@ export default function Home() {
         </>
       )}
       
-      {/* Add Debug Panel - only visible in development environment */}
       {process.env.NODE_ENV === 'development' && <DebugPanel />}
     </main>
   );

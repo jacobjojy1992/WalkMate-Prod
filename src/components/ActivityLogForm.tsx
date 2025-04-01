@@ -1,4 +1,3 @@
-// src/components/ActivityLogForm.tsx
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -8,7 +7,7 @@ import { healthCheck } from '@/services/api';
 type LogType = 'steps' | 'duration' | 'distance';
 
 export default function ActivityLogForm() {
-  const { addActivity, isLoading, error } = useWalkContext();
+  const { addActivity, isLoading, error, userProfile } = useWalkContext();
   
   // Form states
   const [activeTab, setActiveTab] = useState<LogType>('steps');
@@ -18,13 +17,39 @@ export default function ActivityLogForm() {
   const [date, setDate] = useState(() => {
     const today = new Date();
     return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-  });  const [formSubmitting, setFormSubmitting] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
+  });
   
-  // Network and server availability states
+  // Loading and error states
+  const [formSubmitting, setFormSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [isProfileLoading, setIsProfileLoading] = useState(true);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  
+  // Network and server states
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [isServerAvailable, setIsServerAvailable] = useState(true);
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
+
+  // Check for user profile on mount and changes
+  useEffect(() => {
+    const checkProfile = () => {
+      if (userProfile) {
+        setIsProfileLoading(false);
+        setProfileError(null);
+      } else {
+        // Check localStorage as fallback
+        const storedProfile = localStorage.getItem('walkmateUserProfile');
+        if (!storedProfile) {
+          setProfileError('User profile not found');
+        }
+        setIsProfileLoading(false);
+      }
+    };
+
+    // Add a small delay to ensure context is properly initialized
+    const timeoutId = setTimeout(checkProfile, 100);
+    return () => clearTimeout(timeoutId);
+  }, [userProfile]);
   
   // Function to check if server is available
   const checkServerAvailability = useCallback(async () => {
@@ -39,17 +64,15 @@ export default function ActivityLogForm() {
     }
   }, []);
   
-  // Effect for tracking general online/offline status and server availability
+  // Effect for tracking online/offline status and server availability
   useEffect(() => {
     const handleOnlineStatusChange = () => {
       const isOnline = navigator.onLine;
       setIsOffline(!isOnline);
       
-      // When we come back online, check server availability
       if (isOnline) {
         checkServerAvailability();
       } else {
-        // If we're offline, we know server is not available
         setIsServerAvailable(false);
       }
     };
@@ -57,10 +80,7 @@ export default function ActivityLogForm() {
     window.addEventListener('online', handleOnlineStatusChange);
     window.addEventListener('offline', handleOnlineStatusChange);
     
-    // Initial check when component mounts
     checkServerAvailability();
-    
-    // Set up periodic checks every 15 seconds while the component is mounted
     const intervalId = setInterval(checkServerAvailability, 15000);
     
     return () => {
@@ -70,10 +90,37 @@ export default function ActivityLogForm() {
     };
   }, [checkServerAvailability]);
   
-  // Combine network and server status into one variable for form disabling
   const isNetworkUnavailable = isOffline || !isServerAvailable;
   
-  // Conversion formula functions based on: 100 steps = 1 minute = 75m
+  // Show loading state
+  if (isProfileLoading) {
+    return (
+      <div className="bg-gray-800 rounded-lg p-6 mb-8">
+        <div className="flex items-center justify-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-indigo-500"></div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show profile error state
+  if (profileError) {
+    return (
+      <div className="bg-gray-800 rounded-lg p-6 mb-8">
+        <div className="text-red-400 text-center">
+          <p>{profileError}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="mt-4 px-4 py-2 bg-indigo-600 rounded hover:bg-indigo-700"
+          >
+            Reload Page
+          </button>
+        </div>
+      </div>
+    );
+  }
+  
+  // Conversion formula functions
   const calculateFromSteps = (stepCount: number) => {
     const distance = stepCount * 0.75; // steps to meters
     const duration = stepCount / 100; // steps to minutes
@@ -87,16 +134,20 @@ export default function ActivityLogForm() {
   };
   
   const calculateFromDistance = (meters: number) => {
-    const steps = Math.round(meters * (100 / 75)); // Round to whole number
-    const duration = Math.round(meters / 75); // Round to whole minutes
+    const steps = Math.round(meters * (100 / 75));
+    const duration = Math.round(meters / 75);
     return { steps, distance: meters, duration };
   };
   
-  // Handle form submission based on active tab
+  // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Don't proceed if network is unavailable
+    if (!userProfile) {
+      setFormError('Please wait for profile to load or try refreshing the page');
+      return;
+    }
+    
     if (isNetworkUnavailable) {
       setFormError(isOffline 
         ? "Cannot log activities while offline" 
@@ -104,13 +155,11 @@ export default function ActivityLogForm() {
       return;
     }
     
-    // Reset any previous form errors
     setFormError(null);
     setFormSubmitting(true);
     
     let activityData: { steps: number; distance: number; duration: number };
     
-    // Calculate values based on input type
     switch (activeTab) {
       case 'steps':
         if (steps <= 0) {
@@ -138,21 +187,18 @@ export default function ActivityLogForm() {
         break;
       default:
         setFormSubmitting(false);
-        return; // Should never happen
+        return;
     }
     
     try {
-      // Create timestamp for the selected date (at noon)
-      // This ensures the activity is logged for the correct date
       const [year, month, day] = date.split('-').map(Number);
       const localDate = new Date(year, month - 1, day, 12, 0, 0);
       const timestamp = localDate.toISOString();
       
-      // Add the activity with the correct date
       await addActivity({
         date,
         ...activityData,
-        timestamp // Use the timestamp generated from the selected date
+        timestamp
       });
       
       // Reset form fields on success
@@ -162,11 +208,9 @@ export default function ActivityLogForm() {
     } catch (err) {
       console.error("Error adding activity:", err);
       
-      // Update server availability status if we get an error
       if (err && typeof err === 'object' && 'message' in err) {
         const errorMessage = String(err.message || '');
         
-        // If this looks like a network error, mark server as unavailable
         if (
           errorMessage.includes('Network Error') || 
           errorMessage.includes('Failed to fetch') ||
@@ -185,12 +229,10 @@ export default function ActivityLogForm() {
     }
   };
   
-  // Function to manually check server status
   const handleRetryConnection = () => {
     checkServerAvailability();
   };
   
-  // Determine if the form is in a loading state
   const isFormLoading = formSubmitting || isLoading;
   
   return (
@@ -270,7 +312,7 @@ export default function ActivityLogForm() {
         <p>Conversions used: 100 steps ≈ 1 minute ≈ 75 meters</p>
       </div>
       
-      {/* Common form elements for all tabs */}
+      {/* Form */}
       <form onSubmit={handleSubmit}>
         <div className="mb-4">
           <label className="block text-gray-400 mb-2">Date</label>
@@ -285,7 +327,7 @@ export default function ActivityLogForm() {
           />
         </div>
         
-        {/* Steps Form Fields */}
+        {/* Dynamic input field based on active tab */}
         {activeTab === 'steps' && (
           <div className="mb-4">
             <label className="block text-gray-400 mb-2">Steps</label>
