@@ -19,12 +19,24 @@ export default function Home() {
     // Only determine onboarding status after context is loaded
     if (!isLoading) {
       const setupComplete = localStorage.getItem('walkmateSetupComplete') === 'true';
-      setShowOnboarding(!setupComplete && !userProfile);
+      // If setupComplete is false or we have no userProfile, show onboarding
+      setShowOnboarding(!setupComplete || !userProfile);
+      console.log('Determined onboarding state:', {
+        setupComplete,
+        userProfile: !!userProfile,
+        showOnboarding: !setupComplete || !userProfile
+      });
     }
   }, [isLoading, userProfile]);
 
+  // Handle date selection from calendar
+  const handleDateSelect = (date: Date) => {
+    setSelectedDate(date);
+  };
+
   // Show loading spinner while determining state
   if (isLoading || showOnboarding === null) {
+    console.log('Showing loading state:', { isLoading, showOnboarding });
     return (
       <div className="h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
@@ -32,17 +44,16 @@ export default function Home() {
     );
   }
 
-  // Handle date selection from calendar
-  const handleDateSelect = (date: Date) => {
-    setSelectedDate(date);
-  };
-
   return (
     <main className="container mx-auto p-4 max-w-5xl">
       <Header />
       
       {showOnboarding ? (
-        <OnboardingModal onClose={() => setShowOnboarding(false)} />
+        <OnboardingModal onClose={() => {
+          setShowOnboarding(false);
+          // Set the setup complete flag when closing onboarding
+          localStorage.setItem('walkmateSetupComplete', 'true');
+        }} />
       ) : (
         <>
           <StatsPanel selectedDate={selectedDate} />
