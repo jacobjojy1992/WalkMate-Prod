@@ -341,6 +341,12 @@ export function WalkProvider({ children }: { children: ReactNode }) {
       setIsLoading(true);
       setError(null);
       
+      console.log('WalkContext state update:', { 
+        isLoading: true, 
+        hasUserProfile: !!userProfile,
+        currentError: error 
+      });
+      
       try {
         const setupComplete = localStorage.getItem('walkmateSetupComplete') === 'true';
         
@@ -348,6 +354,11 @@ export function WalkProvider({ children }: { children: ReactNode }) {
           console.log('Onboarding not completed, waiting for user input');
           setUserProfileState(null);
           setIsLoading(false);
+          console.log('WalkContext state update:', { 
+            isLoading: false, 
+            hasUserProfile: false,
+            currentError: null 
+          });
           console.groupEnd();
           return;
         }
@@ -369,12 +380,17 @@ export function WalkProvider({ children }: { children: ReactNode }) {
         setUserProfileState(null);
       } finally {
         setIsLoading(false);
+        console.log('WalkContext final state:', { 
+          isLoading: false, 
+          hasUserProfile: !!userProfile,
+          currentError: error 
+        });
         console.groupEnd();
       }
     };
     
     initializeData();
-  }, [synchronizeUser, fetchActivitiesForUser]);
+  }, [synchronizeUser, fetchActivitiesForUser, userProfile, error]); // Added userProfile to dependencies
 
   const addActivity = useCallback(async (activity: Omit<WalkActivity, 'id' | 'userId'>) => {
     console.group('addActivity');
@@ -658,3 +674,4 @@ export function WalkProvider({ children }: { children: ReactNode }) {
 export function useWalkContext() {
   return useContext(WalkContext);
 }
+

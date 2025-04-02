@@ -19,28 +19,18 @@ export default function Home() {
     // Only determine onboarding status after context is loaded
     if (!isLoading) {
       const setupComplete = localStorage.getItem('walkmateSetupComplete') === 'true';
-      const storedProfile = localStorage.getItem('walkmateUserProfile');
+      const shouldShowOnboarding = !setupComplete || !userProfile;
       
-      console.log('Checking app state:', { 
-        setupComplete, 
-        hasStoredProfile: !!storedProfile,
-        hasContextProfile: !!userProfile,
-        isLoading 
+      console.log('Page state check:', {
+        setupComplete,
+        hasUserProfile: !!userProfile,
+        shouldShowOnboarding,
+        isLoading
       });
 
-      // Show onboarding if either setup isn't complete or we have no profile
-      setShowOnboarding(!setupComplete || (!storedProfile && !userProfile));
+      setShowOnboarding(shouldShowOnboarding);
     }
-  }, [isLoading, userProfile]);
-
-  // Only show loading while determining initial state
-  if (showOnboarding === null) {
-    return (
-      <div className="h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
-      </div>
-    );
-  }
+  }, [isLoading, userProfile, showOnboarding]); // Added showOnboarding to deps
 
   // Handle date selection from calendar
   const handleDateSelect = (date: Date) => {
@@ -48,8 +38,7 @@ export default function Home() {
   };
 
   // Show loading spinner while determining state
-  if (isLoading || showOnboarding === null) {
-    console.log('Showing loading state:', { isLoading, showOnboarding });
+  if (showOnboarding === null) {
     return (
       <div className="h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
@@ -62,11 +51,12 @@ export default function Home() {
       <Header />
       
       {showOnboarding ? (
-        <OnboardingModal onClose={() => {
-          setShowOnboarding(false);
-          // Set the setup complete flag when closing onboarding
-          localStorage.setItem('walkmateSetupComplete', 'true');
-        }} />
+        <OnboardingModal 
+          onClose={() => {
+            setShowOnboarding(false);
+            localStorage.setItem('walkmateSetupComplete', 'true');
+          }} 
+        />
       ) : (
         <>
           <StatsPanel selectedDate={selectedDate} />
