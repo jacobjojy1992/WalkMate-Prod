@@ -19,15 +19,28 @@ export default function Home() {
     // Only determine onboarding status after context is loaded
     if (!isLoading) {
       const setupComplete = localStorage.getItem('walkmateSetupComplete') === 'true';
-      // If setupComplete is false or we have no userProfile, show onboarding
-      setShowOnboarding(!setupComplete || !userProfile);
-      console.log('Determined onboarding state:', {
-        setupComplete,
-        userProfile: !!userProfile,
-        showOnboarding: !setupComplete || !userProfile
+      const storedProfile = localStorage.getItem('walkmateUserProfile');
+      
+      console.log('Checking app state:', { 
+        setupComplete, 
+        hasStoredProfile: !!storedProfile,
+        hasContextProfile: !!userProfile,
+        isLoading 
       });
+
+      // Show onboarding if either setup isn't complete or we have no profile
+      setShowOnboarding(!setupComplete || (!storedProfile && !userProfile));
     }
   }, [isLoading, userProfile]);
+
+  // Only show loading while determining initial state
+  if (showOnboarding === null) {
+    return (
+      <div className="h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
+      </div>
+    );
+  }
 
   // Handle date selection from calendar
   const handleDateSelect = (date: Date) => {

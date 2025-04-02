@@ -104,14 +104,22 @@ export function WalkProvider({ children }: { children: ReactNode }) {
   const createAndStoreNewUser = useCallback(async (): Promise<string | null> => {
     console.group('createAndStoreNewUser');
     try {
-      console.log('Creating new user in database');
+      // Get existing profile from localStorage first
+      const existingProfile = localStorage.getItem('walkmateUserProfile');
+      const profileData = existingProfile ? JSON.parse(existingProfile) : {
+        name: 'Device User',
+        goalType: 'steps',
+        goalValue: 10000
+      };
+
+      console.log('Creating new user with profile:', profileData);
       const response = await fetch('/api/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: 'Device User',
-          goalType: 'steps',
-          goalValue: 10000
+          name: profileData.name,
+          goalType: profileData.goalType,
+          goalValue: profileData.goalValue
         })
       });
       
@@ -135,10 +143,10 @@ export function WalkProvider({ children }: { children: ReactNode }) {
       
       const newProfile = {
         id: userId,
-        name: data.name || 'Device User',
+        name: data.name || profileData.name,
         dailyGoal: {
-          type: data.goalType || 'steps',
-          value: data.goalValue || 10000
+          type: data.goalType || profileData.goalType,
+          value: data.goalValue || profileData.goalValue
         }
       };
       
