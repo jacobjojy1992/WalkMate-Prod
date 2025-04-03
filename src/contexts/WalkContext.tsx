@@ -13,6 +13,7 @@ interface WalkContextType {
   setUserProfile: (profile: ApiUserProfile) => Promise<void>;
   fetchActivities: () => Promise<void>;
   resetApplication: () => void;
+  debugDataAssociations: () => Promise<void>;  // Add this back
 }
 
 const WalkContext = createContext<WalkContextType>({
@@ -24,26 +25,33 @@ const WalkContext = createContext<WalkContextType>({
   setUserProfile: async () => {},
   fetchActivities: async () => {},
   resetApplication: () => {},
+  debugDataAssociations: async () => {} 
 });
 
-const apiUserToUserProfile = (apiUser: ApiUser): ApiUserProfile => {
-  return {
-    id: apiUser.id.toString(),
-    name: apiUser.name,
-    dailyGoal: {
-      type: apiUser.goalType as 'steps' | 'distance',
-      value: apiUser.goalValue
-    }
+interface ErrorWithResponse {
+  response?: {
+    status?: number;
+    data?: unknown;
   };
-};
+  message?: string;
+  code?: string;
+}
+
+// Helper functions
+const apiUserToUserProfile = (apiUser: ApiUser): ApiUserProfile => ({
+  id: apiUser.id.toString(),
+  name: apiUser.name,
+  dailyGoal: {
+    type: apiUser.goalType as 'steps' | 'distance',
+    value: apiUser.goalValue
+  }
+});
 
 const apiWalkToWalkActivity = (apiWalk: ApiWalk): WalkActivity => {
   const walkDate = new Date(apiWalk.date);
-  
   const year = walkDate.getFullYear();
   const month = String(walkDate.getMonth() + 1).padStart(2, '0');
   const day = String(walkDate.getDate()).padStart(2, '0');
-  
   const dateStr = `${year}-${month}-${day}`;
   
   return {
@@ -56,15 +64,6 @@ const apiWalkToWalkActivity = (apiWalk: ApiWalk): WalkActivity => {
     timestamp: apiWalk.date
   };
 };
-
-interface ErrorWithResponse {
-  response?: {
-    status?: number;
-    data?: unknown;
-  };
-  message?: string;
-  code?: string;
-}
 
 export function WalkProvider({ children }: { children: ReactNode }) {
   const [activities, setActivities] = useState<WalkActivity[]>([]);
@@ -93,7 +92,6 @@ export function WalkProvider({ children }: { children: ReactNode }) {
     
     console.groupEnd();
   };
-
 
   const createAndStoreNewUser = useCallback(async (): Promise<string | null> => {
     console.group('createAndStoreNewUser');
@@ -125,7 +123,6 @@ export function WalkProvider({ children }: { children: ReactNode }) {
       }
       
       const userId = data.id.toString();
-      
       const newProfile = {
         id: userId,
         name: data.name || profileData.name,
@@ -164,20 +161,45 @@ export function WalkProvider({ children }: { children: ReactNode }) {
         localStorage.setItem('walkmateUserProfile', JSON.stringify(profile));
         setUserProfileState(profile);
         return storedUserId;
-      } 
+      }
       
       localStorage.removeItem('currentUserId');
       localStorage.removeItem('walkmateUserProfile');
       localStorage.removeItem('walkActivities');
       return await createAndStoreNewUser();
-      
     } catch (error) {
-      console.error('Error in synchronizeUser:', error);
+      logError(error);
       return await createAndStoreNewUser();
     } finally {
       console.groupEnd();
     }
   }, [createAndStoreNewUser]);
+
+
+  const debugDataAssociations = useCallback(async () => {
+    console.group('DEBUG: Data Associations');
+    const userId = localStorage.getItem('currentUserId');
+    console.log('Current localStorage userId:', userId);
+    
+    if (userId) {
+      try {
+        const userResponse = await fetch(`/api/users?id=${userId}`);
+        const userData = await userResponse.json();
+        console.log('User in database:', userData);
+        
+        const activitiesResponse = await fetch(`/api/walks?userId=${userId}`);
+        if (activitiesResponse.ok) {
+          const activitiesData = await activitiesResponse.json();
+          console.log('Activities for this user:', activitiesData);
+        } else {
+          console.error('Failed to fetch activities:', activitiesResponse.status);
+        }
+      } catch (e) {
+        console.error('Error debugging data associations:', e);
+      }
+    }
+    console.groupEnd();
+  }, []);
 
   const fetchActivitiesForUser = useCallback(async (userId: string) => {
     if (!userId) return;
@@ -198,8 +220,7 @@ export function WalkProvider({ children }: { children: ReactNode }) {
         setActivities([]);
       }
     } catch (err) {
-      console.error('Error fetching activities:', err);
-      
+      logError(err);
       // Try localStorage fallback
       const savedActivities = localStorage.getItem('walkActivities');
       if (savedActivities) {
@@ -210,7 +231,7 @@ export function WalkProvider({ children }: { children: ReactNode }) {
             : [];
           setActivities(userActivities);
         } catch (e) {
-          console.error('Error parsing localStorage activities', e);
+          console.error('Error parsing localStorage activities:', e);
           setActivities([]);
         }
       }
@@ -237,6 +258,7 @@ export function WalkProvider({ children }: { children: ReactNode }) {
     console.group('addActivity');
     
     if (!userProfile?.id) {
+      console.error('Cannot add activity: No user profile found');
       setError('Cannot add activity: No user profile found');
       console.groupEnd();
       return;
@@ -289,7 +311,7 @@ export function WalkProvider({ children }: { children: ReactNode }) {
       debouncedFetchActivities(userProfile.id);
       
     } catch (err) {
-      console.error('Error adding activity:', err);
+      logError(err);
       setError('Failed to add activity. Please try again.');
     } finally {
       console.groupEnd();
@@ -337,7 +359,7 @@ export function WalkProvider({ children }: { children: ReactNode }) {
         await fetchActivitiesForUser(userData.id.toString());
       }
     } catch (err) {
-      console.error('Error updating profile:', err);
+      logError(err);
       setError('Failed to update profile. Please try again.');
     } finally {
       setIsLoading(false);
@@ -352,7 +374,7 @@ export function WalkProvider({ children }: { children: ReactNode }) {
     try {
       await fetchActivitiesForUser(userProfile.id);
     } catch (err) {
-      console.error('Error fetching activities:', err);
+      logError(err);
       setError('Failed to fetch activities');
     } finally {
       console.groupEnd();
@@ -388,7 +410,7 @@ export function WalkProvider({ children }: { children: ReactNode }) {
           await fetchActivitiesForUser(userId);
         }
       } catch (err) {
-        console.error('Error during initialization:', err);
+        logError(err);
         setError('Failed to initialize app data');
         setUserProfileState(null);
       } finally {
@@ -402,15 +424,16 @@ export function WalkProvider({ children }: { children: ReactNode }) {
 
   return (
     <WalkContext.Provider 
-      value={{ 
-        activities, 
-        userProfile, 
+      value={{
+        activities,
+        userProfile,
         isLoading,
         error,
-        addActivity, 
+        addActivity,
         setUserProfile,
         fetchActivities,
-        resetApplication
+        resetApplication,
+        debugDataAssociations
       }}
     >
       {children}
