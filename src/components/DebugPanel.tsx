@@ -3,7 +3,7 @@
 import React from 'react';
 import { useWalkContext } from '@/contexts/WalkContext';
 
-// Define types for activities
+// Define types for activity
 
 
 export default function DebugPanel() {
